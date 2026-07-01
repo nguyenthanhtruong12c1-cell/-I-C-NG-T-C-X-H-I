@@ -1,0 +1,6 @@
+{
+  "name": "Quản lý Tình nguyện Trường",
+  "description": "Hệ thống quản lý công tác xã hội và hoạt động tình nguyện dành cho Đoàn Thanh niên và Hội Sinh viên cấp Trường.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
