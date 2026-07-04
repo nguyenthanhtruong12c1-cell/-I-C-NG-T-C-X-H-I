@@ -3,6 +3,16 @@ import StudentView from './components/StudentView';
 import AdminView from './components/AdminView';
 import { Campaign, Student, Registration, Statistics } from './types';
 import { initialCampaigns, initialStudents, initialRegistrations } from './data/mockData';
+import { db, handleFirestoreError, OperationType } from './lib/firebase';
+import {
+  collection,
+  doc,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  onSnapshot,
+  writeBatch
+} from 'firebase/firestore';
 import { 
   GraduationCap, 
   Award, 
@@ -123,18 +133,68 @@ export default function App() {
     message: string;
   } | null>(null);
 
-  // Save state changes to localStorage for visual durability
+  // Firestore Real-time Synchronization
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY_CAMPAIGNS, JSON.stringify(campaigns));
-  }, [campaigns]);
+    const unsubscribeCampaigns = onSnapshot(collection(db, 'campaigns'), (snapshot) => {
+      const list: Campaign[] = [];
+      snapshot.forEach((doc) => {
+        list.push(doc.data() as Campaign);
+      });
+      setCampaigns(list);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'campaigns');
+    });
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEY_STUDENTS, JSON.stringify(students));
-  }, [students]);
+    const unsubscribeStudents = onSnapshot(collection(db, 'students'), (snapshot) => {
+      if (snapshot.empty) {
+        // Set local state immediately so UI is interactive while seeding
+        setStudents(initialStudents);
+        // Seed initialStudents to database if empty
+        initialStudents.forEach((student) => {
+          setDoc(doc(db, 'students', student.id), student).catch((err) => {
+            handleFirestoreError(err, OperationType.CREATE, `students/${student.id}`);
+          });
+        });
+      } else {
+        const list: Student[] = [];
+        snapshot.forEach((doc) => {
+          list.push(doc.data() as Student);
+        });
+        setStudents(list);
+      }
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'students');
+    });
 
+    const unsubscribeRegistrations = onSnapshot(collection(db, 'registrations'), (snapshot) => {
+      const list: Registration[] = [];
+      snapshot.forEach((doc) => {
+        list.push(doc.data() as Registration);
+      });
+      setRegistrations(list);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'registrations');
+    });
+
+    return () => {
+      unsubscribeCampaigns();
+      unsubscribeStudents();
+      unsubscribeRegistrations();
+    };
+  }, []);
+
+  // Update currentUser reference dynamically if profile changes on another device
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY_REGISTRATIONS, JSON.stringify(registrations));
-  }, [registrations]);
+    if (currentUser && role === 'student') {
+      const studentId = (currentUser as Student).id;
+      const found = students.find(s => s.id === studentId);
+      if (found) {
+        if (JSON.stringify(found) !== JSON.stringify(currentUser)) {
+          setCurrentUser(found);
+        }
+      }
+    }
+  }, [students, currentUser, role]);
 
   useEffect(() => {
     if (currentUser) {
@@ -160,7 +220,6 @@ export default function App() {
           title: 'Lỗi quét mã QR',
           message: 'Không tìm thấy thông tin hoạt động này trong hệ thống!'
         });
-        // Clear URL search params
         window.history.replaceState({}, document.title, window.location.pathname);
         return;
       }
@@ -171,7 +230,6 @@ export default function App() {
           title: 'Yêu cầu đăng nhập',
           message: `Bạn đã quét mã đăng ký hoạt động: "${camp.title}". Vui lòng ĐĂNG NHẬP (hoặc ĐĂNG KÝ) tài khoản Đội viên để hệ thống tiến hành ghi nhận đăng ký của bạn!`
         });
-        // Clear URL search params
         window.history.replaceState({}, document.title, window.location.pathname);
         return;
       }
@@ -195,7 +253,7 @@ export default function App() {
           title: 'Hoạt động đã kết thúc',
           message: `Hoạt động "${camp.title}" đã kết thúc hoặc hoàn thành!`
         });
-      } else if (camp.slotsRegistered >= camp.slotsTotal) {
+      } else if ((camp.slotsRegistered || 0) >= camp.slotsTotal) {
         setAlertModal({
           title: 'Đầy chỉ tiêu',
           message: `Hoạt động "${camp.title}" đã đạt đủ chỉ tiêu suất đăng ký tối đa!`
@@ -215,19 +273,28 @@ export default function App() {
           attendanceStatus: 'none'
         };
 
-        setCampaigns(prev => prev.map(c => {
-          if (c.id === campaignId) {
-            return { ...c, slotsRegistered: c.slotsRegistered + 1 };
+        const registerQR = async () => {
+          try {
+            const batch = writeBatch(db);
+            batch.set(doc(db, 'registrations', newRegistration.id), newRegistration);
+            batch.update(doc(db, 'campaigns', campaignId), {
+              slotsRegistered: (camp.slotsRegistered || 0) + 1
+            });
+            await batch.commit();
+
+            setAlertModal({
+              title: 'Đăng ký thành công',
+              message: `Chúc mừng bạn! Bạn đã đăng ký tham gia hoạt động "${camp.title}" thành công qua mã QR.`
+            });
+          } catch (error) {
+            console.error('Error QR registering:', error);
+            setAlertModal({
+              title: 'Lỗi đăng ký',
+              message: 'Có lỗi xảy ra khi xử lý đăng ký của bạn. Vui lòng thử lại!'
+            });
           }
-          return c;
-        }));
-
-        setRegistrations(prev => [newRegistration, ...prev]);
-
-        setAlertModal({
-          title: 'Đăng ký thành công',
-          message: `Chúc mừng bạn! Bạn đã đăng ký tham gia hoạt động "${camp.title}" thành công qua mã QR.`
-        });
+        };
+        registerQR();
       }
 
       // Clear search params from URL so it doesn't trigger again on subsequent re-renders
@@ -530,44 +597,48 @@ export default function App() {
     URL.revokeObjectURL(url);
   };
 
-  const handleConfirmSignUp = () => {
+  const handleConfirmSignUp = async () => {
     if (!pendingStudent) return;
 
-    const updatedStudents = [...students, pendingStudent];
-    setStudents(updatedStudents);
-    
-    // Auto fill login ID and show success
-    setLoginStudentId(pendingStudent.studentId);
-    setRegSuccess('Đăng ký Đội viên thành công! Hồ sơ của bạn đã được chuyển đến Ban điều hành (Admin) để phê duyệt. File phiếu đăng ký Word (.doc) của bạn đã được tải xuống tự động.');
-    setShowSignUp(false);
+    try {
+      await setDoc(doc(db, 'students', pendingStudent.id), pendingStudent);
+      
+      // Auto fill login ID and show success
+      setLoginStudentId(pendingStudent.studentId);
+      setRegSuccess('Đăng ký Đội viên thành công! Hồ sơ của bạn đã được chuyển đến Ban điều hành (Admin) để phê duyệt. File phiếu đăng ký Word (.doc) của bạn đã được tải xuống tự động.');
+      setShowSignUp(false);
 
-    // Trigger word download
-    handleDownloadDocx(pendingStudent);
+      // Trigger word download
+      handleDownloadDocx(pendingStudent);
 
-    // Reset states
-    setPendingStudent(null);
-    setRegName('');
-    setRegId('');
-    setRegClass('');
-    setRegBirthDate('');
-    setRegEmail('');
-    setRegPhone('');
-    setRegGender('Nam');
-    setRegSubBranch('');
-    setRegMajor('');
-    setRegIdCard('');
-    setRegAddress('');
-    setRegClub('');
-    setRegSkills([]);
-    setRegOtherSkill('');
-    setRegAiTool('');
-    setRegPortfolioUrl('');
-    setRegFacebook('');
-    setRegTikTok('');
-    setRegOtherSocial('');
-    setRegCtxhAccumulated('');
-    setRegCtxhMissing('');
-    setRegAspiration('');
+      // Reset states
+      setPendingStudent(null);
+      setRegName('');
+      setRegId('');
+      setRegClass('');
+      setRegBirthDate('');
+      setRegEmail('');
+      setRegPhone('');
+      setRegGender('Nam');
+      setRegSubBranch('');
+      setRegMajor('');
+      setRegIdCard('');
+      setRegAddress('');
+      setRegClub('');
+      setRegSkills([]);
+      setRegOtherSkill('');
+      setRegAiTool('');
+      setRegPortfolioUrl('');
+      setRegFacebook('');
+      setRegTikTok('');
+      setRegOtherSocial('');
+      setRegCtxhAccumulated('');
+      setRegCtxhMissing('');
+      setRegAspiration('');
+    } catch (error) {
+      console.error('Error signing up:', error);
+      setLoginError('Có lỗi xảy ra khi lưu thông tin đăng ký. Vui lòng thử lại!');
+    }
   };
 
   const handleSignUp = (e: React.FormEvent) => {
@@ -631,7 +702,7 @@ export default function App() {
 
   // STUDENT ACTIONS
   // Registering for a campaign
-  const handleRegisterCampaign = (campaignId: string) => {
+  const handleRegisterCampaign = async (campaignId: string) => {
     if (!currentUser || role !== 'student') return;
     const currentStudent = currentUser as Student;
 
@@ -681,19 +752,21 @@ export default function App() {
       attendanceStatus: 'none'
     };
 
-    // Update campaign registered slots
-    setCampaigns(prev => prev.map(c => {
-      if (c.id === campaignId) {
-        return { ...c, slotsRegistered: c.slotsRegistered + 1 };
-      }
-      return c;
-    }));
-
-    setRegistrations(prev => [newRegistration, ...prev]);
+    try {
+      const batch = writeBatch(db);
+      batch.set(doc(db, 'registrations', newRegistration.id), newRegistration);
+      batch.update(doc(db, 'campaigns', campaignId), {
+        slotsRegistered: (campaign.slotsRegistered || 0) + 1
+      });
+      await batch.commit();
+    } catch (error) {
+      console.error('Error registering campaign:', error);
+      handleFirestoreError(error, OperationType.WRITE, `registrations/${newRegistration.id}`);
+    }
   };
 
   // Cancelling registration
-  const handleCancelRegistration = (regId: string) => {
+  const handleCancelRegistration = async (regId: string) => {
     const reg = registrations.find(r => r.id === regId);
     if (!reg) return;
 
@@ -706,72 +779,90 @@ export default function App() {
       return;
     }
 
-    // Decrement campaign registered slots
-    setCampaigns(prev => prev.map(c => {
-      if (c.id === reg.campaignId) {
-        return { ...c, slotsRegistered: Math.max(0, c.slotsRegistered - 1) };
-      }
-      return c;
-    }));
+    const campaign = campaigns.find(c => c.id === reg.campaignId);
 
-    setRegistrations(prev => prev.filter(r => r.id !== regId));
+    try {
+      const batch = writeBatch(db);
+      batch.delete(doc(db, 'registrations', regId));
+      if (campaign) {
+        batch.update(doc(db, 'campaigns', reg.campaignId), {
+          slotsRegistered: Math.max(0, (campaign.slotsRegistered || 0) - 1)
+        });
+      }
+      await batch.commit();
+    } catch (error) {
+      console.error('Error cancelling registration:', error);
+      handleFirestoreError(error, OperationType.DELETE, `registrations/${regId}`);
+    }
   };
 
   // ADMIN ACTIONS
   // Approve or Reject student registration
-  const handleApproveRegistration = (regId: string, status: 'approved' | 'rejected') => {
-    setRegistrations(prev => prev.map(r => {
-      if (r.id === regId) {
-        return { ...r, status: status };
-      }
-      return r;
-    }));
+  const handleApproveRegistration = async (regId: string, status: 'approved' | 'rejected') => {
+    try {
+      await updateDoc(doc(db, 'registrations', regId), { status });
+    } catch (error) {
+      console.error('Error approving registration:', error);
+      handleFirestoreError(error, OperationType.UPDATE, `registrations/${regId}`);
+    }
   };
 
   // Create new campaign
-  const handleCreateCampaign = (newCampData: Omit<Campaign, 'id' | 'slotsRegistered'>) => {
+  const handleCreateCampaign = async (newCampData: Omit<Campaign, 'id' | 'slotsRegistered'>) => {
+    const newCampId = `camp-${Date.now()}`;
     const newCamp: Campaign = {
       ...newCampData,
-      id: `camp-${Date.now()}`,
-      slotsRegistered: 0
+      id: newCampId,
+      slotsRegistered: 0,
+      status: 'open'
     };
-    setCampaigns(prev => [newCamp, ...prev]);
+    try {
+      await setDoc(doc(db, 'campaigns', newCampId), newCamp);
+    } catch (error) {
+      console.error('Error creating campaign:', error);
+      handleFirestoreError(error, OperationType.CREATE, `campaigns/${newCampId}`);
+    }
   };
 
   // Toggle student account lock
-  const handleToggleLockStudent = (studentId: string) => {
-    setStudents(prev => prev.map(s => {
-      if (s.id === studentId) {
-        const nextStatus = s.status === 'locked' ? 'active' : 'locked';
-        return { ...s, status: nextStatus };
-      }
-      return s;
-    }));
+  const handleToggleLockStudent = async (studentId: string) => {
+    const student = students.find(s => s.id === studentId);
+    if (!student) return;
+    const nextStatus = student.status === 'locked' ? 'active' : 'locked';
+    try {
+      await updateDoc(doc(db, 'students', studentId), { status: nextStatus });
+    } catch (error) {
+      console.error('Error toggling lock student:', error);
+      handleFirestoreError(error, OperationType.UPDATE, `students/${studentId}`);
+    }
   };
 
   // Approve or reject student registration
-  const handleApproveStudent = (studentId: string, approved: boolean) => {
-    setStudents(prev => prev.map(s => {
-      if (s.id === studentId) {
-        return { ...s, status: approved ? 'active' : 'locked' };
-      }
-      return s;
-    }));
+  const handleApproveStudent = async (studentId: string, approved: boolean) => {
+    const status = approved ? 'active' : 'locked';
+    try {
+      await updateDoc(doc(db, 'students', studentId), { status });
+    } catch (error) {
+      console.error('Error approving student:', error);
+      handleFirestoreError(error, OperationType.UPDATE, `students/${studentId}`);
+    }
   };
 
   // Toggle student leadership role
-  const handleToggleLeaderRole = (studentId: string) => {
-    setStudents(prev => prev.map(s => {
-      if (s.id === studentId) {
-        const nextRole = s.role === 'leader' ? 'student' : 'leader';
-        return { ...s, role: nextRole };
-      }
-      return s;
-    }));
+  const handleToggleLeaderRole = async (studentId: string) => {
+    const student = students.find(s => s.id === studentId);
+    if (!student) return;
+    const nextRole = student.role === 'leader' ? 'student' : 'leader';
+    try {
+      await updateDoc(doc(db, 'students', studentId), { role: nextRole });
+    } catch (error) {
+      console.error('Error toggling leader role:', error);
+      handleFirestoreError(error, OperationType.UPDATE, `students/${studentId}`);
+    }
   };
 
   // Complete Campaign (Mark attendance & performance grade)
-  const handleCompleteCampaignRegistration = (
+  const handleCompleteCampaignRegistration = async (
     regId: string, 
     attendance: 'present' | 'absent' | 'excused', 
     score: number
@@ -779,44 +870,39 @@ export default function App() {
     const reg = registrations.find(r => r.id === regId);
     if (!reg) return;
 
-    // Update registration status
-    setRegistrations(prev => prev.map(r => {
-      if (r.id === regId) {
-        return { 
-          ...r, 
-          status: 'completed',
-          attendanceStatus: attendance,
-          performanceScore: score
-        };
-      }
-      return r;
-    }));
-
-    // Credit Points & Hours to the student
     const campaign = campaigns.find(c => c.id === reg.campaignId);
     if (!campaign) return;
 
-    setStudents(prev => prev.map(s => {
-      if (s.id === reg.studentId) {
-        let scoreToAward = 0;
-        let hoursToAward = 0;
+    const student = students.find(s => s.id === reg.studentId);
+    if (!student) return;
 
-        if (attendance === 'present') {
-          if (campaign.scoreType === 'Ngày') {
-            scoreToAward = campaign.score;
-          } else {
-            hoursToAward = campaign.score;
-          }
-        }
+    let scoreToAward = 0;
+    let hoursToAward = 0;
 
-        return {
-          ...s,
-          totalScore: s.totalScore + scoreToAward,
-          totalHours: s.totalHours + hoursToAward
-        };
+    if (attendance === 'present') {
+      if (campaign.scoreType === 'Ngày') {
+        scoreToAward = campaign.score;
+      } else {
+        hoursToAward = campaign.score;
       }
-      return s;
-    }));
+    }
+
+    try {
+      const batch = writeBatch(db);
+      batch.update(doc(db, 'registrations', regId), {
+        status: 'completed',
+        attendanceStatus: attendance,
+        performanceScore: score
+      });
+      batch.update(doc(db, 'students', student.id), {
+        totalScore: (student.totalScore || 0) + scoreToAward,
+        totalHours: (student.totalHours || 0) + hoursToAward
+      });
+      await batch.commit();
+    } catch (error) {
+      console.error('Error completing campaign registration:', error);
+      handleFirestoreError(error, OperationType.WRITE, `registrations/${regId}`);
+    }
   };
 
   // Delete student account
@@ -824,22 +910,34 @@ export default function App() {
     setConfirmModal({
       title: 'Xác nhận xóa thành viên',
       message: 'Bạn có chắc muốn xóa thành viên này? Mọi thông tin đăng ký hoạt động của thành viên này cũng sẽ bị xóa.',
-      onConfirm: () => {
-        setStudents(prev => prev.filter(s => s.id !== studentId));
-        setRegistrations(prev => prev.filter(r => r.studentId !== studentId));
-        setConfirmModal(null);
+      onConfirm: async () => {
+        try {
+          const batch = writeBatch(db);
+          batch.delete(doc(db, 'students', studentId));
+          
+          const studentRegs = registrations.filter(r => r.studentId === studentId);
+          studentRegs.forEach(reg => {
+            batch.delete(doc(db, 'registrations', reg.id));
+          });
+          
+          await batch.commit();
+          setConfirmModal(null);
+        } catch (error) {
+          console.error('Error deleting student:', error);
+          handleFirestoreError(error, OperationType.DELETE, `students/${studentId}`);
+        }
       }
     });
   };
 
   // Update campaign status (Pause, Stop/Complete, Open)
-  const handleUpdateCampaignStatus = (campaignId: string, status: 'open' | 'paused' | 'completed') => {
-    setCampaigns(prev => prev.map(c => {
-      if (c.id === campaignId) {
-        return { ...c, status };
-      }
-      return c;
-    }));
+  const handleUpdateCampaignStatus = async (campaignId: string, status: 'open' | 'paused' | 'completed') => {
+    try {
+      await updateDoc(doc(db, 'campaigns', campaignId), { status });
+    } catch (error) {
+      console.error('Error updating campaign status:', error);
+      handleFirestoreError(error, OperationType.UPDATE, `campaigns/${campaignId}`);
+    }
   };
 
   // Delete campaign
@@ -847,10 +945,22 @@ export default function App() {
     setConfirmModal({
       title: 'Xác nhận xóa hoạt động',
       message: 'Bạn có chắc muốn xóa hoạt động này? Mọi thông tin đăng ký liên quan sẽ bị xóa.',
-      onConfirm: () => {
-        setCampaigns(prev => prev.filter(c => c.id !== campaignId));
-        setRegistrations(prev => prev.filter(r => r.campaignId !== campaignId));
-        setConfirmModal(null);
+      onConfirm: async () => {
+        try {
+          const batch = writeBatch(db);
+          batch.delete(doc(db, 'campaigns', campaignId));
+          
+          const campRegs = registrations.filter(r => r.campaignId === campaignId);
+          campRegs.forEach(reg => {
+            batch.delete(doc(db, 'registrations', reg.id));
+          });
+          
+          await batch.commit();
+          setConfirmModal(null);
+        } catch (error) {
+          console.error('Error deleting campaign:', error);
+          handleFirestoreError(error, OperationType.DELETE, `campaigns/${campaignId}`);
+        }
       }
     });
   };
@@ -858,15 +968,37 @@ export default function App() {
   // Reset state helper
   const handleResetDemoState = () => {
     setConfirmModal({
-      title: 'Đặt lại toàn bộ dữ liệu',
-      message: 'Bạn có chắc muốn đặt lại toàn bộ dữ liệu? Phiên đăng nhập hiện tại cũng sẽ được đăng xuất.',
-      onConfirm: () => {
-        localStorage.clear();
-        setCampaigns(initialCampaigns);
-        setStudents(initialStudents);
-        setRegistrations(initialRegistrations);
-        setCurrentUser(null);
-        setConfirmModal(null);
+      title: 'Đặt lại toàn bộ dữ liệu trên hệ thống',
+      message: 'Bạn có chắc muốn xóa sạch toàn bộ dữ liệu trên Firebase và khôi phục cài đặt gốc? Tất cả tài khoản, đăng ký, chiến dịch sẽ bị xóa và đăng xuất.',
+      onConfirm: async () => {
+        try {
+          const batch = writeBatch(db);
+          
+          students.forEach(s => {
+            batch.delete(doc(db, 'students', s.id));
+          });
+          
+          campaigns.forEach(c => {
+            batch.delete(doc(db, 'campaigns', c.id));
+          });
+          
+          registrations.forEach(r => {
+            batch.delete(doc(db, 'registrations', r.id));
+          });
+          
+          initialStudents.forEach(s => {
+            batch.set(doc(db, 'students', s.id), s);
+          });
+          
+          await batch.commit();
+          
+          localStorage.clear();
+          setCurrentUser(null);
+          setConfirmModal(null);
+        } catch (error) {
+          console.error('Error resetting system:', error);
+          handleFirestoreError(error, OperationType.DELETE, 'reset_demo_state');
+        }
       }
     });
   };
@@ -1019,6 +1151,7 @@ export default function App() {
                             <input
                               type="text"
                               required
+                              placeholder="Nhập 'admin'..."
                               value={loginAdminUser}
                               onChange={(e) => setLoginAdminUser(e.target.value)}
                               className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none"
@@ -1030,6 +1163,7 @@ export default function App() {
                             <input
                               type="password"
                               required
+                              placeholder="Nhập 'admin'..."
                               value={loginAdminPass}
                               onChange={(e) => setLoginAdminPass(e.target.value)}
                               className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none"

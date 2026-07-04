@@ -1,0 +1,93 @@
+{
+  "entities": {
+    "Campaign": {
+      "title": "Campaign",
+      "description": "Volunteering campaign or activity details",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "department": { "type": "string" },
+        "date": { "type": "string" },
+        "slotsTotal": { "type": "number" },
+        "slotsRegistered": { "type": "number" },
+        "status": { "type": "string", "enum": ["open", "closing_soon", "completed", "draft", "paused"] },
+        "score": { "type": "number" },
+        "scoreType": { "type": "string", "enum": ["Ngày", "Giờ"] },
+        "type": { "type": "string" },
+        "location": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "skillsRequired": { "type": "array" }
+      }
+    },
+    "Student": {
+      "title": "Student",
+      "description": "Student profile and volunteer stats",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "studentId": { "type": "string" },
+        "faculty": { "type": "string" },
+        "className": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "totalHours": { "type": "number" },
+        "totalScore": { "type": "number" },
+        "status": { "type": "string", "enum": ["active", "locked", "pending"] },
+        "role": { "type": "string", "enum": ["student", "leader", "admin"] },
+        "birthDate": { "type": "string" },
+        "gender": { "type": "string" },
+        "subBranch": { "type": "string" },
+        "major": { "type": "string" },
+        "idCard": { "type": "string" },
+        "address": { "type": "string" },
+        "club": { "type": "string" },
+        "skills": { "type": "array" },
+        "otherSkill": { "type": "string" },
+        "aiTool": { "type": "string" },
+        "portfolioUrl": { "type": "string" },
+        "facebook": { "type": "string" },
+        "tiktok": { "type": "string" },
+        "otherSocial": { "type": "string" },
+        "ctxhAccumulated": { "type": "number" },
+        "ctxhMissing": { "type": "number" },
+        "aspiration": { "type": "string" }
+      }
+    },
+    "Registration": {
+      "title": "Registration",
+      "description": "Student registration for a campaign",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "studentId": { "type": "string" },
+        "studentName": { "type": "string" },
+        "studentClass": { "type": "string" },
+        "studentFaculty": { "type": "string" },
+        "campaignId": { "type": "string" },
+        "campaignTitle": { "type": "string" },
+        "registeredAt": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected", "completed"] },
+        "attendanceStatus": { "type": "string", "enum": ["present", "absent", "excused", "none"] },
+        "performanceScore": { "type": "number" },
+        "certificateUrl": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "/campaigns/{campaignId}": {
+      "schema": "Campaign",
+      "description": "Collection of all volunteering activities"
+    },
+    "/students/{studentId}": {
+      "schema": "Student",
+      "description": "Collection of student profiles"
+    },
+    "/registrations/{registrationId}": {
+      "schema": "Registration",
+      "description": "Collection of active registrations"
+    }
+  }
+}
