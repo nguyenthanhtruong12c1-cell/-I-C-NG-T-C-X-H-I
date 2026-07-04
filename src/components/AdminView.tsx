@@ -29,7 +29,8 @@ import {
   Ban,
   QrCode,
   Clipboard,
-  ExternalLink
+  ExternalLink,
+  FileText
 } from 'lucide-react';
 
 interface AdminViewProps {
@@ -45,6 +46,8 @@ interface AdminViewProps {
   onDeleteStudent: (studentId: string) => void;
   onDeleteCampaign: (campaignId: string) => void;
   onUpdateCampaignStatus?: (campaignId: string, status: 'open' | 'paused' | 'completed') => void;
+  onApproveStudent: (studentId: string, approved: boolean) => void;
+  onDownloadDocx: (student: Student) => void;
 }
 
 export default function AdminView({
@@ -59,9 +62,13 @@ export default function AdminView({
   onCompleteCampaignRegistration,
   onDeleteStudent,
   onDeleteCampaign,
-  onUpdateCampaignStatus
+  onUpdateCampaignStatus,
+  onApproveStudent,
+  onDownloadDocx
 }: AdminViewProps) {
   const [activeMenu, setActiveMenu] = useState<'dashboard' | 'students' | 'campaigns' | 'reports'>('dashboard');
+  const [selectedStudentDetail, setSelectedStudentDetail] = useState<Student | null>(null);
+  const [viewingRegistrationStudent, setViewingRegistrationStudent] = useState<Student | null>(null);
   
   // Registration list modal state
   const [viewingCampRegsId, setViewingCampRegsId] = useState<string | null>(null);
@@ -74,6 +81,7 @@ export default function AdminView({
   // Search and filter states
   const [studentSearch, setStudentSearch] = useState('');
   const [studentFacultyFilter, setStudentFacultyFilter] = useState('all');
+  const [studentStatusFilter, setStudentStatusFilter] = useState('all');
   const [campaignSearch, setCampaignSearch] = useState('');
   
   // Modal State for New Campaign
@@ -98,7 +106,8 @@ export default function AdminView({
     const matchesSearch = std.name.toLowerCase().includes(studentSearch.toLowerCase()) || 
                           std.studentId.includes(studentSearch);
     const matchesFaculty = studentFacultyFilter === 'all' || std.faculty === studentFacultyFilter;
-    return matchesSearch && matchesFaculty;
+    const matchesStatus = studentStatusFilter === 'all' || std.status === studentStatusFilter;
+    return matchesSearch && matchesFaculty && matchesStatus;
   });
 
   const filteredCampaigns = campaigns.filter(camp => 
@@ -162,9 +171,50 @@ export default function AdminView({
     let filename = '';
 
     if (reportType === 'students') {
-      headers = 'Họ tên,MSSV,Khoa,Lớp,Số giờ đóng góp,Số ngày CTXH,Trạng thái\n';
-      rows = students.map(s => [s.name, s.studentId, s.faculty, s.className, s.totalHours.toString(), s.totalScore.toString(), s.status]);
-      filename = 'Bao_cao_sinh_vien_tinh_nguyen.csv';
+      headers = 'Họ tên,Giới tính,Ngày sinh,MSSV,Khoa,Ngành học,Lớp,Chi hội,CCCD,Địa chỉ thường trú,Email,Số điện thoại,CLB đang tham gia,Sở trường Kỹ năng,Kỹ năng khác,Công cụ AI thành thạo,Link sản phẩm,Facebook,TikTok,MXH khác,Số ngày CTXH đã tích lũy,Số ngày CTXH còn thiếu,Nguyện vọng ý kiến,Tổng số giờ đóng góp,Tổng ngày CTXH quy đổi,Trạng thái tài khoản\n';
+      rows = students.map(s => {
+        let birthDateStr = '';
+        if (s.birthDate) {
+          if (s.birthDate.includes('-')) {
+            const parts = s.birthDate.split('-');
+            if (parts.length === 3) birthDateStr = `${parts[2]}/${parts[1]}/${parts[0]}`;
+            else birthDateStr = s.birthDate;
+          } else {
+            birthDateStr = s.birthDate;
+          }
+        }
+        const skillsStr = s.skills ? s.skills.join("; ") : '';
+        const statusText = s.status === 'active' ? 'Đang hoạt động' : s.status === 'pending' ? 'Chờ kích hoạt' : 'Đã khóa';
+        return [
+          s.name,
+          s.gender || 'Nam',
+          birthDateStr,
+          s.studentId,
+          s.faculty,
+          s.major || '',
+          s.className,
+          s.subBranch || '',
+          s.idCard || '',
+          s.address || '',
+          s.email,
+          s.phone,
+          s.club || '',
+          skillsStr,
+          s.otherSkill || '',
+          s.aiTool || '',
+          s.portfolioUrl || '',
+          s.facebook || '',
+          s.tiktok || '',
+          s.otherSocial || '',
+          (s.ctxhAccumulated ?? 0).toString(),
+          (s.ctxhMissing ?? 0).toString(),
+          s.aspiration || '',
+          s.totalHours.toString(),
+          s.totalScore.toString(),
+          statusText
+        ];
+      });
+      filename = 'Danh_sach_sinh_vien_dang_ky_doi_vien.csv';
     } else {
       headers = 'Tên hoạt động,Ban tổ chức,Ngày diễn ra,Thể loại,Địa điểm,Sĩ số dự kiến,Đã đăng ký\n';
       rows = campaigns.map(c => [c.title, c.department, c.date, c.type, c.location, c.slotsTotal.toString(), c.slotsRegistered.toString()]);
@@ -184,11 +234,92 @@ export default function AdminView({
     document.body.removeChild(link);
   };
 
+  // Export campaign participants to CSV
+  const handleExportCampaignParticipants = (campaignId: string) => {
+    const campaign = campaigns.find(c => c.id === campaignId);
+    if (!campaign) return;
+    
+    const campRegs = registrations.filter(r => r.campaignId === campaignId);
+    
+    const headers = 'STT,Họ và tên,Mã số sinh viên,Ngày sinh,Lớp,Khoa,Thời gian đăng ký,Trạng thái tuyển,Điểm danh,Điểm hiệu suất\n';
+    
+    const rows = campRegs.map((reg, index) => {
+      // Tìm ngày sinh của sinh viên từ danh sách students sử dụng internal ID (reg.studentId)
+      const studentObj = students.find(s => s.id === reg.studentId);
+      let birthDateStr = '';
+      if (studentObj && studentObj.birthDate) {
+        if (studentObj.birthDate.includes('-')) {
+          const parts = studentObj.birthDate.split('-');
+          if (parts.length === 3) {
+            birthDateStr = `${parts[2]}/${parts[1]}/${parts[0]}`;
+          } else {
+            birthDateStr = studentObj.birthDate;
+          }
+        } else {
+          birthDateStr = studentObj.birthDate;
+        }
+      }
+      
+      const statusText = reg.status === 'pending' ? 'Chờ duyệt' : 
+                         reg.status === 'approved' ? 'Đã duyệt' : 
+                         reg.status === 'rejected' ? 'Từ chối' : 
+                         reg.status === 'completed' ? 'Hoàn thành' : reg.status;
+
+      const attendanceText = reg.attendanceStatus === 'present' ? 'Có mặt' :
+                             reg.attendanceStatus === 'absent' ? 'Vắng mặt' :
+                             reg.attendanceStatus === 'excused' ? 'Vắng có phép' : 'Chưa điểm danh';
+                             
+      const scoreText = reg.performanceScore !== undefined ? reg.performanceScore.toString() : '';
+                         
+      return [
+        (index + 1).toString(),
+        reg.studentName,
+        studentObj ? studentObj.studentId : reg.studentId,
+        birthDateStr,
+        reg.studentClass || '',
+        reg.studentFaculty || '',
+        reg.registeredAt,
+        statusText,
+        attendanceText,
+        scoreText
+      ];
+    });
+
+    const filename = `Danh_sach_tham_gia_${campaign.title.replace(/\s+/g, '_')}.csv`;
+    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" 
+      + headers 
+      + rows.map(e => e.map(val => `"${val.replace(/"/g, '""')}"`).join(",")).join("\n");
+    
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="flex flex-col lg:flex-row gap-8">
       
       {/* SIDEBAR NAVIGATION - Styled beautifully */}
       <div className="w-full lg:w-64 bg-white rounded-2xl p-4 border border-gray-100 shadow-xs h-fit space-y-2">
+        <div className="flex flex-col items-center text-center p-3 mb-2 border-b border-gray-100/60">
+          <div className="w-16 h-16 rounded-full bg-white border border-gray-100 shadow-sm flex items-center justify-center mb-2 overflow-hidden">
+          <img 
+    src="https://i.postimg.cc/RFkjyCyr/a.png" 
+    alt="Logo Hội Sinh viên Việt Nam" 
+    className="w-full h-full object-cover rounded-full" 
+  />
+          </div>
+          <span className="text-[10px] font-bold text-[#00529C] uppercase tracking-wider">
+            Hội Sinh Viên Việt Nam
+          </span>
+          <span className="text-[8px] text-gray-400 mt-0.5 font-medium">
+            Trường Đại học Đồng Tháp
+          </span>
+        </div>
+
         <div className="px-3 py-2 text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
           HỆ THỐNG ĐIỀU HÀNH
         </div>
@@ -204,7 +335,7 @@ export default function AdminView({
         >
           <div className="flex items-center gap-2.5">
             <LayoutDashboard className="w-4 h-4" />
-            <span>Dashboard Tổng quan</span>
+            <span>Tổng quan</span>
           </div>
           {pendingRegs.length > 0 && (
             <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${activeMenu === 'dashboard' ? 'bg-white text-[#00529C]' : 'bg-red-500 text-white'}`}>
@@ -306,18 +437,21 @@ export default function AdminView({
                 </div>
               ) : (
                 <div className="max-h-64 overflow-y-auto space-y-3 pr-2">
-                  {pendingRegs.map((reg) => (
-                    <div 
-                      key={reg.id} 
-                      className="p-3 bg-gray-50 rounded-xl border border-gray-100 flex items-center justify-between flex-wrap gap-3 text-xs"
-                    >
-                      <div>
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <strong className="text-gray-900 font-semibold">{reg.studentName}</strong>
-                          <span className="text-gray-400">({reg.studentClass} • {reg.studentFaculty})</span>
+                  {pendingRegs.map((reg) => {
+                    const studentObj = students.find(s => s.id === reg.studentId);
+                    const mssv = studentObj ? studentObj.studentId : reg.studentId;
+                    return (
+                      <div 
+                        key={reg.id} 
+                        className="p-3 bg-gray-50 rounded-xl border border-gray-100 flex items-center justify-between flex-wrap gap-3 text-xs"
+                      >
+                        <div>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <strong className="text-gray-900 font-semibold">{reg.studentName}</strong>
+                            <span className="text-gray-400">(MSSV: {mssv} • {reg.studentClass} • {reg.studentFaculty})</span>
+                          </div>
+                          <p className="text-gray-500 mt-0.5 font-medium">Đăng ký tham gia: <span className="text-[#00529C]">{reg.campaignTitle}</span></p>
                         </div>
-                        <p className="text-gray-500 mt-0.5 font-medium">Đăng ký tham gia: <span className="text-[#00529C]">{reg.campaignTitle}</span></p>
-                      </div>
                       
                       <div className="flex gap-2">
                         <button
@@ -336,7 +470,7 @@ export default function AdminView({
                         </button>
                       </div>
                     </div>
-                  ))}
+                  ); })}
                 </div>
               )}
             </div>
@@ -438,6 +572,21 @@ export default function AdminView({
                   ))}
                 </select>
               </div>
+
+              <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs">
+                <Filter className="w-3.5 h-3.5 text-gray-500" />
+                <span className="text-gray-500">Trạng thái:</span>
+                <select
+                  value={studentStatusFilter}
+                  onChange={(e) => setStudentStatusFilter(e.target.value)}
+                  className="bg-transparent border-none font-semibold focus:outline-none text-gray-700 cursor-pointer text-xs"
+                >
+                  <option value="all">Tất cả trạng thái</option>
+                  <option value="pending">Chờ phê duyệt</option>
+                  <option value="active">Đang hoạt động</option>
+                  <option value="locked">Bị khóa sổ / Từ chối</option>
+                </select>
+              </div>
             </div>
 
             {/* Bảng dữ liệu sinh viên */}
@@ -457,8 +606,27 @@ export default function AdminView({
                   {filteredStudents.map((std) => (
                     <tr key={std.id} className="hover:bg-gray-50/40 transition-colors">
                       <td className="p-3.5">
-                        <div className="font-semibold text-gray-800">{std.name}</div>
-                        <div className="font-mono text-[10px] text-gray-400 mt-0.5">{std.studentId}</div>
+                        <button 
+                          onClick={() => setSelectedStudentDetail(std)}
+                          className="font-semibold text-gray-800 hover:text-[#00529C] transition-colors flex items-center gap-1 text-left cursor-pointer"
+                        >
+                          {std.name}
+                          <ExternalLink className="w-3 h-3 text-[#00529C] shrink-0 font-bold" />
+                        </button>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <span className="font-mono text-[10px] text-gray-400">{std.studentId}</span>
+                          {std.birthDate && (
+                            <span className="text-[10px] text-gray-500 bg-gray-100 px-1 py-0.2 rounded font-medium">
+                              NS: {(() => {
+                                if (std.birthDate.includes('-')) {
+                                  const parts = std.birthDate.split('-');
+                                  if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+                                }
+                                return std.birthDate;
+                              })()}
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="p-3.5">
                         <div className="text-gray-700 font-medium">{std.faculty}</div>
@@ -490,43 +658,75 @@ export default function AdminView({
                           </span>
                         )}
                         {std.status === 'pending' && (
-                          <span className="bg-amber-50 text-amber-700 px-2.5 py-0.5 rounded-full font-medium text-[10px]">
-                            Chờ kích hoạt
+                          <span className="bg-amber-50 text-amber-700 px-2.5 py-0.5 rounded-full font-bold text-[10px] animate-pulse">
+                            Chờ phê duyệt
                           </span>
                         )}
                         {std.status === 'locked' && (
                           <span className="bg-red-50 text-red-700 px-2.5 py-0.5 rounded-full font-medium text-[10px]">
-                            Đã khóa sổ
+                            Khóa / Từ chối
                           </span>
                         )}
                       </td>
-                      <td className="p-3.5 text-right space-x-2">
-                        {/* Phân nhóm trưởng */}
+                      <td className="p-3.5 text-right space-x-1.5">
+                        {/* Xem đơn đăng ký */}
                         <button
-                          onClick={() => onToggleLeaderRole(std.id)}
-                          className={`p-1.5 rounded-lg border transition-colors inline-flex`}
-                          title={std.role === 'leader' ? 'Hạ cấp Đội viên' : 'Phong chức Nhóm trưởng'}
+                          onClick={() => setViewingRegistrationStudent(std)}
+                          className="p-1.5 rounded-lg border border-purple-100 hover:bg-purple-50 text-purple-600 transition-colors inline-flex cursor-pointer"
+                          title="Xem Phiếu Đăng Ký thành viên"
                         >
-                          <Shield className={`w-3.5 h-3.5 ${std.role === 'leader' ? 'text-amber-600' : 'text-gray-400'}`} />
+                          <FileText className="w-3.5 h-3.5" />
                         </button>
 
-                        {/* Khóa mở tài khoản */}
-                        <button
-                          onClick={() => onToggleLockStudent(std.id)}
-                          className={`p-1.5 rounded-lg border transition-colors inline-flex`}
-                          title={std.status === 'locked' ? 'Mở khóa tài khoản' : 'Khóa tài khoản'}
-                        >
-                          {std.status === 'locked' ? (
-                            <Unlock className="w-3.5 h-3.5 text-emerald-600" />
-                          ) : (
-                            <Lock className="w-3.5 h-3.5 text-red-500" />
-                          )}
-                        </button>
+                        {std.status === 'pending' ? (
+                          <>
+                            {/* Phê duyệt thành viên mới */}
+                            <button
+                              onClick={() => onApproveStudent(std.id, true)}
+                              className="p-1.5 rounded-lg border border-emerald-100 hover:bg-emerald-50 text-emerald-600 transition-colors inline-flex font-bold cursor-pointer"
+                              title="Duyệt Đội viên mới"
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                            </button>
+                            {/* Từ chối thành viên mới */}
+                            <button
+                              onClick={() => onApproveStudent(std.id, false)}
+                              className="p-1.5 rounded-lg border border-red-100 hover:bg-red-50 text-red-500 transition-colors inline-flex cursor-pointer"
+                              title="Từ chối phê duyệt"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            {/* Phân nhóm trưởng */}
+                            <button
+                              onClick={() => onToggleLeaderRole(std.id)}
+                              className={`p-1.5 rounded-lg border border-gray-100 hover:bg-gray-50 transition-colors inline-flex cursor-pointer`}
+                              title={std.role === 'leader' ? 'Hạ cấp Đội viên' : 'Phong chức Nhóm trưởng'}
+                            >
+                              <Shield className={`w-3.5 h-3.5 ${std.role === 'leader' ? 'text-amber-600' : 'text-gray-400'}`} />
+                            </button>
+
+                            {/* Khóa mở tài khoản */}
+                            <button
+                              onClick={() => onToggleLockStudent(std.id)}
+                              className={`p-1.5 rounded-lg border border-gray-100 hover:bg-gray-50 transition-colors inline-flex cursor-pointer`}
+                              title={std.status === 'locked' ? 'Mở khóa tài khoản' : 'Khóa tài khoản'}
+                            >
+                              {std.status === 'locked' ? (
+                                <Unlock className="w-3.5 h-3.5 text-emerald-600" />
+                              ) : (
+                                <Lock className="w-3.5 h-3.5 text-red-500" />
+                              )}
+                            </button>
+                          </>
+                        )}
 
                         {/* Xóa thành viên */}
                         <button
                           onClick={() => onDeleteStudent(std.id)}
-                          className="p-1.5 rounded-lg border border-red-100 hover:bg-red-50 text-red-500 transition-colors inline-flex"
+                          className="p-1.5 rounded-lg border border-red-100 hover:bg-red-50 text-red-500 transition-colors inline-flex cursor-pointer"
                           title="Xóa thành viên"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -678,16 +878,25 @@ export default function AdminView({
                     </button>
                   </div>
 
-                  <button
-                    onClick={() => {
-                      setViewingCampRegsId(camp.id);
-                      setCampRegsSearch('');
-                    }}
-                    className="w-full py-2 bg-blue-50 hover:bg-blue-100 text-[#00529C] hover:text-[#003B70] border border-blue-200 hover:border-blue-300 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all mt-2 cursor-pointer"
-                  >
-                    <Users className="w-4 h-4" />
-                    Danh sách đăng ký ({registrations.filter(r => r.campaignId === camp.id).length})
-                  </button>
+                  <div className="flex gap-2 mt-2">
+                    <button
+                      onClick={() => {
+                        setViewingCampRegsId(camp.id);
+                        setCampRegsSearch('');
+                      }}
+                      className="flex-1 py-2 bg-blue-50 hover:bg-blue-100 text-[#00529C] hover:text-[#003B70] border border-blue-200 hover:border-blue-300 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                    >
+                      <Users className="w-4 h-4" />
+                      Danh sách đăng ký ({registrations.filter(r => r.campaignId === camp.id).length})
+                    </button>
+                    <button
+                      onClick={() => handleExportCampaignParticipants(camp.id)}
+                      className="px-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 hover:border-emerald-300 rounded-xl text-xs font-bold flex items-center justify-center transition-all cursor-pointer"
+                      title="Tải danh sách đăng ký (.csv)"
+                    >
+                      <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -720,12 +929,15 @@ export default function AdminView({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
-                    {gradableRegs.map((reg) => (
-                      <tr key={reg.id} className="hover:bg-gray-50/40">
-                        <td className="p-3">
-                          <div className="font-semibold text-gray-800">{reg.studentName}</div>
-                          <div className="text-gray-400 text-[10px] mt-0.5">{reg.studentClass} • {reg.studentFaculty}</div>
-                        </td>
+                    {gradableRegs.map((reg) => {
+                      const studentObj = students.find(s => s.id === reg.studentId);
+                      const mssv = studentObj ? studentObj.studentId : reg.studentId;
+                      return (
+                        <tr key={reg.id} className="hover:bg-gray-50/40">
+                          <td className="p-3">
+                            <div className="font-semibold text-gray-800">{reg.studentName}</div>
+                            <div className="text-gray-400 text-[10px] mt-0.5">MSSV: {mssv} • {reg.studentClass} • {reg.studentFaculty}</div>
+                          </td>
                         <td className="p-3">
                           <div className="font-medium text-gray-700">{reg.campaignTitle}</div>
                           <div className="text-gray-400 text-[10px] mt-0.5">Thời gian tuyển hè 2026</div>
@@ -745,7 +957,7 @@ export default function AdminView({
                           </button>
                         </td>
                       </tr>
-                    ))}
+                    ); })}
                   </tbody>
                 </table>
               </div>
@@ -1034,15 +1246,25 @@ export default function AdminView({
                       Chiến dịch: {viewingCampaign?.title}
                     </p>
                   </div>
-                  <button 
-                    onClick={() => {
-                      setViewingCampRegsId(null);
-                      setCampRegsSearch('');
-                    }}
-                    className="text-gray-400 hover:text-gray-600 p-1.5 hover:bg-gray-50 rounded-lg transition-colors"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleExportCampaignParticipants(viewingCampRegsId)}
+                      className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-[11px] font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                      title="Xuất file danh sách đăng ký (.csv)"
+                    >
+                      <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                      Xuất Excel/CSV
+                    </button>
+                    <button 
+                      onClick={() => {
+                        setViewingCampRegsId(null);
+                        setCampRegsSearch('');
+                      }}
+                      className="text-gray-400 hover:text-gray-600 p-1.5 hover:bg-gray-50 rounded-lg transition-colors cursor-pointer"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
                 </div>
 
                 {/* Search Bar inside Modal */}
@@ -1068,20 +1290,23 @@ export default function AdminView({
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      {filteredCampRegs.map((reg) => (
-                        <div 
-                          key={reg.id}
-                          className="p-3 bg-gray-50 rounded-xl border border-gray-100 flex items-center justify-between flex-wrap gap-3 text-xs"
-                        >
-                          <div>
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <strong className="text-gray-900 font-semibold">{reg.studentName}</strong>
-                              <span className="text-gray-400">({reg.studentClass} • {reg.studentFaculty})</span>
+                      {filteredCampRegs.map((reg) => {
+                        const studentObj = students.find(s => s.id === reg.studentId);
+                        const mssv = studentObj ? studentObj.studentId : reg.studentId;
+                        return (
+                          <div 
+                            key={reg.id}
+                            className="p-3 bg-gray-50 rounded-xl border border-gray-100 flex items-center justify-between flex-wrap gap-3 text-xs"
+                          >
+                            <div>
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <strong className="text-gray-900 font-semibold">{reg.studentName}</strong>
+                                <span className="text-gray-400">(MSSV: {mssv} • {reg.studentClass} • {reg.studentFaculty})</span>
+                              </div>
+                              <div className="text-gray-400 text-[10px] mt-0.5">
+                                Đăng ký lúc: {reg.registeredAt}
+                              </div>
                             </div>
-                            <div className="text-gray-400 text-[10px] mt-0.5">
-                              Đăng ký lúc: {reg.registeredAt}
-                            </div>
-                          </div>
 
                           <div className="flex items-center gap-2.5">
                             {/* Status Badge */}
@@ -1139,7 +1364,7 @@ export default function AdminView({
                             </div>
                           </div>
                         </div>
-                      ))}
+                      ); })}
                     </div>
                   )}
                 </div>
@@ -1249,6 +1474,557 @@ export default function AdminView({
             </div>
           );
         })()
+      )}
+
+      {/* MODAL: CHI TIẾT THÔNG TIN ĐỘI VIÊN */}
+      {selectedStudentDetail && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl max-w-2xl w-full shadow-2xl border border-gray-100 overflow-hidden flex flex-col max-h-[90vh]">
+            {/* Header */}
+            <div className="px-6 py-4 bg-[#00529C] text-white flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 bg-white/10 rounded-lg">
+                  <Users className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h3 className="font-display font-bold text-sm">
+                    Chi tiết Hồ sơ Đội viên
+                  </h3>
+                  <p className="text-[10px] text-blue-100 uppercase tracking-wider font-semibold mt-0.5">
+                    {selectedStudentDetail.studentId} • Lớp: {selectedStudentDetail.className}
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setSelectedStudentDetail(null)}
+                className="text-white/80 hover:text-white p-1.5 hover:bg-white/10 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Content (Scrollable) */}
+            <div className="p-6 overflow-y-auto space-y-6 text-xs text-gray-700">
+              {/* Phần I */}
+              <div className="space-y-3">
+                <h4 className="font-bold text-[#00529C] text-xs uppercase tracking-wider flex items-center gap-1.5">
+                  <span className="w-1.5 h-3 bg-[#00529C] rounded-full inline-block"></span>
+                  Phần I: Thông tin cá nhân
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 bg-gray-50 p-4 rounded-xl border border-gray-200">
+                  <div>
+                    <span className="text-gray-400 block mb-0.5">Họ và tên (In hoa):</span>
+                    <span className="font-bold text-gray-900 uppercase">{selectedStudentDetail.name}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-400 block mb-0.5">Giới tính:</span>
+                    <span className="font-semibold text-gray-900">{selectedStudentDetail.gender || 'Nam'}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-400 block mb-0.5">Ngày, tháng, năm sinh:</span>
+                    <span className="font-semibold text-gray-900">
+                      {(() => {
+                        if (selectedStudentDetail.birthDate && selectedStudentDetail.birthDate.includes('-')) {
+                          const parts = selectedStudentDetail.birthDate.split('-');
+                          if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+                        }
+                        return selectedStudentDetail.birthDate || 'Chưa cập nhật';
+                      })()}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-gray-400 block mb-0.5">Chi hội:</span>
+                    <span className="font-semibold text-gray-900">{selectedStudentDetail.subBranch || 'Chưa cập nhật'}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-400 block mb-0.5">Khoa:</span>
+                    <span className="font-semibold text-gray-900">{selectedStudentDetail.faculty}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-400 block mb-0.5">Ngành học:</span>
+                    <span className="font-semibold text-gray-900">{selectedStudentDetail.major || 'Chưa cập nhật'}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-400 block mb-0.5">Số căn cước công dân:</span>
+                    <span className="font-semibold text-gray-900">{selectedStudentDetail.idCard || 'Chưa cập nhật'}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-400 block mb-0.5">Địa chỉ thường trú:</span>
+                    <span className="font-semibold text-gray-900">{selectedStudentDetail.address || 'Chưa cập nhật'}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-400 block mb-0.5">Địa chỉ Email:</span>
+                    <span className="font-semibold text-gray-900">{selectedStudentDetail.email}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-400 block mb-0.5">Số điện thoại liên hệ:</span>
+                    <span className="font-semibold text-gray-900">{selectedStudentDetail.phone}</span>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <span className="text-gray-400 block mb-0.5">CLB/Đội/Nhóm đang tham gia:</span>
+                    <span className="font-semibold text-gray-900">{selectedStudentDetail.club || 'Không tham gia CLB nào'}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Phần II */}
+              <div className="space-y-3">
+                <h4 className="font-bold text-emerald-600 text-xs uppercase tracking-wider flex items-center gap-1.5">
+                  <span className="w-1.5 h-3 bg-emerald-500 rounded-full inline-block"></span>
+                  Phần II: Đặc điểm cá nhân và Nguyện vọng
+                </h4>
+                <div className="space-y-4 bg-gray-50 p-4 rounded-xl border border-gray-200">
+                  <div>
+                    <span className="text-gray-400 block mb-1.5">Sở trường và kỹ năng bản thân:</span>
+                    {selectedStudentDetail.skills && selectedStudentDetail.skills.length > 0 ? (
+                      <div className="flex flex-wrap gap-1.5">
+                        {selectedStudentDetail.skills.map((skill, index) => (
+                          <span key={index} className="bg-emerald-50 text-emerald-700 border border-emerald-100 px-2.5 py-0.5 rounded text-[10px] font-semibold">
+                            ✓ {skill}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-gray-400 italic">Chưa chọn kỹ năng nào</span>
+                    )}
+                  </div>
+
+                  {selectedStudentDetail.otherSkill && (
+                    <div>
+                      <span className="text-gray-400 block mb-0.5">Kỹ năng khác:</span>
+                      <span className="font-medium text-gray-800">{selectedStudentDetail.otherSkill}</span>
+                    </div>
+                  )}
+
+                  <div>
+                    <span className="text-gray-400 block mb-0.5">Công cụ AI thành thạo nhất:</span>
+                    <span className="font-bold text-gray-900">{selectedStudentDetail.aiTool || 'Chưa cập nhật'}</span>
+                  </div>
+
+                  {selectedStudentDetail.portfolioUrl && (
+                    <div>
+                      <span className="text-gray-400 block mb-0.5">Đường dẫn sản phẩm thiết kế/đã làm:</span>
+                      <a 
+                        href={selectedStudentDetail.portfolioUrl.startsWith('http') ? selectedStudentDetail.portfolioUrl : `https://${selectedStudentDetail.portfolioUrl}`}
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="text-[#00529C] hover:underline font-semibold break-all inline-flex items-center gap-1"
+                      >
+                        {selectedStudentDetail.portfolioUrl}
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-gray-200/60">
+                    <div>
+                      <span className="text-gray-400 block mb-0.5">Facebook:</span>
+                      {selectedStudentDetail.facebook ? (
+                        <span className="font-semibold text-gray-800 break-all">{selectedStudentDetail.facebook}</span>
+                      ) : (
+                        <span className="text-gray-400 italic">Chưa cập nhật</span>
+                      )}
+                    </div>
+                    <div>
+                      <span className="text-gray-400 block mb-0.5">TikTok:</span>
+                      {selectedStudentDetail.tiktok ? (
+                        <span className="font-semibold text-gray-800 break-all">{selectedStudentDetail.tiktok}</span>
+                      ) : (
+                        <span className="text-gray-400 italic">Chưa cập nhật</span>
+                      )}
+                    </div>
+                    <div>
+                      <span className="text-gray-400 block mb-0.5">Mạng xã hội khác:</span>
+                      {selectedStudentDetail.otherSocial ? (
+                        <span className="font-semibold text-gray-800 break-all">{selectedStudentDetail.otherSocial}</span>
+                      ) : (
+                        <span className="text-gray-400 italic">Chưa cập nhật</span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4 pt-2 border-t border-gray-200/60">
+                    <div>
+                      <span className="text-gray-400 block mb-0.5">Số ngày CTXH đã tích lũy:</span>
+                      <span className="font-bold text-emerald-600 bg-emerald-50 px-2.5 py-0.5 rounded inline-block">
+                        {selectedStudentDetail.ctxhAccumulated ?? 0} ngày
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-gray-400 block mb-0.5">Số ngày CTXH còn thiếu:</span>
+                      <span className="font-bold text-red-600 bg-red-50 px-2.5 py-0.5 rounded inline-block">
+                        {selectedStudentDetail.ctxhMissing ?? 0} ngày
+                      </span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <span className="text-gray-400 block mb-0.5">Nguyện vọng, kỳ vọng:</span>
+                    <p className="text-gray-700 bg-white p-2.5 rounded-lg border border-gray-150 italic leading-relaxed whitespace-pre-wrap">
+                      {selectedStudentDetail.aspiration || 'Không có nguyện vọng đặc biệt'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Thông số hoạt động */}
+              <div className="space-y-3 pt-3 border-t border-gray-100">
+                <h4 className="font-bold text-purple-700 text-xs uppercase tracking-wider flex items-center gap-1.5">
+                  <span className="w-1.5 h-3 bg-purple-500 rounded-full inline-block"></span>
+                  Thành tích cống hiến tổng thể
+                </h4>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="bg-purple-50/50 p-3 rounded-xl border border-purple-100 text-center">
+                    <span className="text-gray-400 block mb-0.5">Tổng số giờ tham gia</span>
+                    <span className="text-base font-bold text-purple-700">{selectedStudentDetail.totalHours} Giờ</span>
+                  </div>
+                  <div className="bg-emerald-50/50 p-3 rounded-xl border border-emerald-100 text-center">
+                    <span className="text-gray-400 block mb-0.5">Số ngày CTXH tích luỹ</span>
+                    <span className="text-base font-bold text-emerald-700">+{selectedStudentDetail.totalScore} Ngày</span>
+                  </div>
+                  <div className="bg-blue-50/50 p-3 rounded-xl border border-blue-100 text-center">
+                    <span className="text-gray-400 block mb-0.5">Vai trò thành viên</span>
+                    <span className="text-xs font-bold text-[#00529C] uppercase block mt-1.5">
+                      {selectedStudentDetail.role === 'admin' ? 'Ban điều hành' : selectedStudentDetail.role === 'leader' ? 'Nhóm trưởng' : 'Đội viên'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-between items-center shrink-0">
+              <button
+                onClick={() => {
+                  setViewingRegistrationStudent(selectedStudentDetail);
+                  setSelectedStudentDetail(null);
+                }}
+                className="px-4 py-2 bg-purple-50 hover:bg-purple-100 border border-purple-200 text-purple-700 rounded-xl font-semibold flex items-center gap-1.5 transition-colors cursor-pointer text-xs"
+              >
+                <FileText className="w-4 h-4" />
+                Xem Phiếu Đăng Ký (A4)
+              </button>
+
+              <button
+                onClick={() => setSelectedStudentDetail(null)}
+                className="px-4 py-2 bg-white hover:bg-gray-50 border border-gray-200 rounded-xl text-gray-600 font-semibold cursor-pointer text-xs"
+              >
+                Đóng hồ sơ
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: DOCUMENT PREVIEW FOR ADMIN */}
+      {viewingRegistrationStudent && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-gray-100 rounded-2xl max-w-4xl w-full shadow-2xl border border-gray-100 overflow-hidden flex flex-col h-[95vh] animate-fade-in">
+            {/* Header */}
+            <div className="px-6 py-4 bg-gradient-to-r from-purple-700 to-indigo-800 text-white flex items-center justify-between shrink-0 shadow-md">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-white/10 rounded-xl">
+                  <FileText className="w-5 h-5 text-white animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="font-display font-bold text-sm">
+                    Quản lý Phiếu Đăng Ký Đội viên
+                  </h3>
+                  <p className="text-[10px] text-purple-100 uppercase tracking-wider font-semibold mt-0.5">
+                    Mã hồ sơ: {viewingRegistrationStudent.studentId} • Trạng thái: {
+                      viewingRegistrationStudent.status === 'pending' ? 'Chờ duyệt' : 
+                      viewingRegistrationStudent.status === 'active' ? 'Đã duyệt' : 'Bị từ chối/Khóa'
+                    }
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setViewingRegistrationStudent(null)}
+                className="text-white/80 hover:text-white p-1.5 hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Actions Bar */}
+            <div className="bg-white px-6 py-3 border-b border-gray-200 flex flex-wrap gap-2 justify-between items-center shrink-0">
+              <div className="flex gap-2">
+                <button
+                  onClick={() => onDownloadDocx(viewingRegistrationStudent)}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all shadow-xs hover:shadow-md cursor-pointer"
+                >
+                  <FileText className="w-4 h-4" />
+                  Tải Phiếu Đăng Ký (Word)
+                </button>
+              </div>
+
+              <div className="flex gap-2 items-center">
+                {viewingRegistrationStudent.status === 'pending' ? (
+                  <>
+                    <button
+                      onClick={() => {
+                        onApproveStudent(viewingRegistrationStudent.id, true);
+                        setViewingRegistrationStudent(prev => prev ? { ...prev, status: 'active' } : null);
+                      }}
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all shadow-xs hover:shadow-md cursor-pointer"
+                    >
+                      <Check className="w-4 h-4" />
+                      Phê duyệt ứng viên
+                    </button>
+                    <button
+                      onClick={() => {
+                        onApproveStudent(viewingRegistrationStudent.id, false);
+                        setViewingRegistrationStudent(prev => prev ? { ...prev, status: 'locked' } : null);
+                      }}
+                      className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all shadow-xs hover:shadow-md cursor-pointer"
+                    >
+                      <X className="w-4 h-4" />
+                      Từ chối đơn
+                    </button>
+                  </>
+                ) : (
+                  <span className="text-xs font-semibold text-gray-500 bg-gray-100 px-3 py-1.5 rounded-xl border border-gray-200">
+                    Hồ sơ đã được xử lý ({viewingRegistrationStudent.status === 'active' ? 'Đã kích hoạt' : 'Bị khóa/từ chối'})
+                  </span>
+                )}
+                
+                <button
+                  onClick={() => setViewingRegistrationStudent(null)}
+                  className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 border border-gray-200 rounded-xl font-bold text-xs transition-all cursor-pointer"
+                >
+                  Đóng
+                </button>
+              </div>
+            </div>
+
+            {/* Document Content Container (Simulating A4 paper) */}
+            <div className="flex-1 p-4 md:p-8 overflow-y-auto bg-gray-200/50 flex justify-center">
+              <div className="bg-white max-w-3xl w-full shadow-lg border border-gray-200 p-8 md:p-14 text-xs text-black font-serif leading-relaxed relative min-h-[1100px]">
+                
+                {/* Standard Document Header */}
+                <div className="flex justify-between items-start border-b border-gray-100 pb-4 mb-6">
+                  <div className="text-center font-bold font-sans tracking-wide text-[10px] sm:text-xs">
+                    <p className="text-gray-900">HỘI SINH VIÊN VIỆT NAM</p>
+                    <p className="text-gray-900 text-[10px]">BCH HỘI SINH VIÊN VIỆT NAM</p>
+                    <p className="text-[#00529C] border-b border-black pb-1.5 inline-block">TRƯỜNG ĐẠI HỌC ĐỒNG THÁP</p>
+                    <p className="mt-1 font-normal text-[8px] text-gray-500">***</p>
+                  </div>
+                  <div className="text-right font-sans italic text-gray-400 text-[10px] pt-1">
+                    Số: ....................
+                  </div>
+                </div>
+
+                {/* Photo space & Document Title */}
+                <div className="grid grid-cols-4 gap-4 items-center mb-8">
+                  <div className="col-span-1">
+                    <div className="border border-dashed border-gray-400 w-24 h-32 rounded flex flex-col items-center justify-center text-center p-2 text-[10px] text-gray-400 font-sans">
+                      <span className="font-bold">Ảnh 3x4</span>
+                      <span>hoặc 4x6</span>
+                    </div>
+                  </div>
+                  <div className="col-span-3 text-center">
+                    <h2 className="font-sans font-extrabold text-gray-900 text-sm sm:text-base leading-tight uppercase tracking-wider">
+                      ĐƠN ĐĂNG KÝ THAM GIA
+                    </h2>
+                    <h3 className="font-sans font-extrabold text-[#00529C] text-xs sm:text-sm mt-1 uppercase tracking-wide">
+                      ĐỘI CÔNG TÁC XÃ HỘI TRƯỜNG ĐẠI HỌC ĐỒNG THÁP
+                    </h3>
+                    <div className="text-gray-400 tracking-widest font-sans font-light mt-1 text-xs">-------------------------</div>
+                  </div>
+                </div>
+
+                {/* Salutation */}
+                <div className="text-center font-bold text-gray-900 mb-6 font-sans text-xs sm:text-sm">
+                  Kính gửi: Ban Thư ký Hội Sinh viên Trường Đại học Đồng Tháp
+                </div>
+
+                {/* Section I */}
+                <div className="space-y-3 font-sans text-gray-800">
+                  <h4 className="font-bold text-[#00529C] text-[11px] uppercase tracking-wide border-l-4 border-[#00529C] pl-2 mb-4">
+                    PHẦN I. THÔNG TIN CÁ NHÂN
+                  </h4>
+                  
+                  <div className="space-y-2.5">
+                    <div>
+                      <span className="text-gray-500 font-medium">1. Họ và tên (viết in hoa):</span>
+                      <span className="ml-2 font-bold text-gray-900 uppercase border-b border-dashed border-gray-300 pb-0.5 inline-block min-w-[200px]">{viewingRegistrationStudent.name}</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <span className="text-gray-500 font-medium">2. Giới tính:</span>
+                        <span className="ml-2 font-semibold text-gray-900 bg-gray-50 px-2 py-0.5 rounded border border-gray-200">
+                          {viewingRegistrationStudent.gender || 'Nam'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500 font-medium">Ngày, tháng, năm sinh:</span>
+                        <span className="ml-2 font-semibold text-gray-900 border-b border-dashed border-gray-300 pb-0.5 inline-block">
+                          {(() => {
+                            if (viewingRegistrationStudent.birthDate && viewingRegistrationStudent.birthDate.includes('-')) {
+                              const parts = viewingRegistrationStudent.birthDate.split('-');
+                              if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+                            }
+                            return viewingRegistrationStudent.birthDate || 'Chưa cập nhật';
+                          })()}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <span className="text-gray-500 font-medium">3. Chi hội:</span>
+                      <span className="ml-2 font-semibold text-gray-900 border-b border-dashed border-gray-300 pb-0.5 inline-block min-w-[300px]">{viewingRegistrationStudent.subBranch || 'Chưa đăng ký'}</span>
+                    </div>
+
+                    <div>
+                      <span className="text-gray-500 font-medium">4. Khoa:</span>
+                      <span className="ml-2 font-semibold text-gray-900 border-b border-dashed border-gray-300 pb-0.5 inline-block min-w-[300px]">{viewingRegistrationStudent.faculty}</span>
+                    </div>
+
+                    <div>
+                      <span className="text-gray-500 font-medium">5. Ngành học:</span>
+                      <span className="ml-2 font-semibold text-gray-900 border-b border-dashed border-gray-300 pb-0.5 inline-block min-w-[300px]">{viewingRegistrationStudent.major || 'Chưa cập nhật'}</span>
+                    </div>
+
+                    <div>
+                      <span className="text-gray-500 font-medium">6. Số căn cước công dân:</span>
+                      <span className="ml-2 font-semibold text-gray-900 border-b border-dashed border-gray-300 pb-0.5 inline-block min-w-[200px]">{viewingRegistrationStudent.idCard || 'Chưa cập nhật'}</span>
+                    </div>
+
+                    <div>
+                      <span className="text-gray-500 font-medium">7. Địa chỉ thường trú (xã/phường, tỉnh):</span>
+                      <span className="ml-2 font-semibold text-gray-900 border-b border-dashed border-gray-300 pb-0.5 inline-block min-w-[350px]">{viewingRegistrationStudent.address || 'Chưa cập nhật'}</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <span className="text-gray-500 font-medium">8. Địa chỉ email:</span>
+                        <span className="ml-2 font-semibold text-gray-900 border-b border-dashed border-gray-300 pb-0.5 inline-block">{viewingRegistrationStudent.email}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500 font-medium">9. Số điện thoại liên hệ:</span>
+                        <span className="ml-2 font-semibold text-gray-900 border-b border-dashed border-gray-300 pb-0.5 inline-block">{viewingRegistrationStudent.phone}</span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <span className="text-gray-500 font-medium">10. Tên CLB/đội/nhóm đang tham gia (nếu có):</span>
+                      <span className="ml-2 font-semibold text-gray-900 border-b border-dashed border-gray-300 pb-0.5 inline-block min-w-[250px]">{viewingRegistrationStudent.club || 'Không tham gia'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section II */}
+                <div className="space-y-4 font-sans text-gray-800 mt-8">
+                  <h4 className="font-bold text-emerald-600 text-[11px] uppercase tracking-wide border-l-4 border-emerald-500 pl-2 mb-4">
+                    PHẦN II. ĐẶC ĐIỂM CÁ NHÂN VÀ NGUYỆN VỌNG
+                  </h4>
+
+                  <div className="space-y-4">
+                    <div>
+                      <span className="text-gray-500 font-semibold block mb-2">1. Sở trường và kỹ năng bản thân:</span>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 bg-gray-50 p-4 rounded-xl border border-gray-150">
+                        {[
+                          'Tình nguyện viên trực tiếp (hậu cần)', 'Tình nguyện viên trực tuyến',
+                          'Ca hát', 'Nhảy, múa',
+                          'Dẫn chương trình (MC)', 'Lễ tân',
+                          'Chụp ảnh', 'Quay phim',
+                          'Viết bài (Content)', 'Thiết kế đồ họa',
+                          'Biên tập video', 'Tin học văn phòng',
+                          'Ngoại ngữ (Tiếng Anh, v.v.)', 'Kỹ năng hoạt náo',
+                          'Sáng tạo nội dung TikTok/Reels'
+                        ].map((skill) => {
+                          const checked = viewingRegistrationStudent.skills?.includes(skill);
+                          return (
+                            <div key={skill} className="flex items-center gap-2 text-[10px] font-medium text-gray-700">
+                              <span className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${checked ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-gray-300 bg-white'}`}>
+                                {checked && <Check className="w-2.5 h-2.5 font-bold" />}
+                              </span>
+                              <span>{skill}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                      <div>
+                        <span className="text-gray-500 font-medium block">Kỹ năng khác (ghi rõ):</span>
+                        <span className="font-semibold text-gray-900 border-b border-dashed border-gray-300 pb-0.5 inline-block min-w-[150px]">{viewingRegistrationStudent.otherSkill || 'Không có'}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500 font-medium block">Công cụ AI thành thạo nhất:</span>
+                        <span className="font-bold text-gray-900 border-b border-dashed border-gray-300 pb-0.5 inline-block min-w-[150px]">{viewingRegistrationStudent.aiTool || 'Không có'}</span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <span className="text-gray-500 font-medium block">Đường dẫn sản phẩm thiết kế/đã làm:</span>
+                      <span className="font-semibold text-blue-600 break-all">{viewingRegistrationStudent.portfolioUrl || 'Chưa cập nhật'}</span>
+                    </div>
+
+                    <div className="space-y-1">
+                      <span className="text-gray-500 font-semibold block">2. Địa chỉ mạng xã hội cá nhân:</span>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pl-3">
+                        <div>
+                          <span className="text-gray-400 block text-[9px] uppercase font-bold">Facebook</span>
+                          <span className="font-semibold text-gray-900">{viewingRegistrationStudent.facebook || 'Chưa cập nhật'}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400 block text-[9px] uppercase font-bold">TikTok</span>
+                          <span className="font-semibold text-gray-900">{viewingRegistrationStudent.tiktok || 'Chưa cập nhật'}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400 block text-[9px] uppercase font-bold">Khác</span>
+                          <span className="font-semibold text-gray-900">{viewingRegistrationStudent.otherSocial || 'Chưa cập nhật'}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1 pt-2 border-t border-gray-100">
+                      <span className="text-gray-500 font-semibold block">3. Tiến độ tích lũy ngày Công tác xã hội:</span>
+                      <div className="grid grid-cols-2 gap-4 pl-3">
+                        <div>
+                          <span className="text-gray-400 block text-[9px] uppercase font-bold">Đã tích luỹ</span>
+                          <span className="font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded inline-block">{viewingRegistrationStudent.ctxhAccumulated ?? 0} ngày</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400 block text-[9px] uppercase font-bold">Còn thiếu</span>
+                          <span className="font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded inline-block">{viewingRegistrationStudent.ctxhMissing ?? 0} ngày</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <span className="text-gray-500 font-semibold block">4. Nguyện vọng / Kỳ vọng cá nhân khi tham gia Đội Công tác xã hội:</span>
+                      <p className="text-gray-700 bg-gray-50 p-3 rounded-xl border border-gray-200 italic leading-relaxed text-[10.5px]">
+                        {viewingRegistrationStudent.aspiration || 'Không có nguyện vọng đặc biệt.'}
+                      </p>
+                    </div>
+
+                    <div className="pt-6 border-t border-gray-200 text-justify text-[10px] text-gray-600 leading-relaxed">
+                      <p className="font-semibold text-gray-800 uppercase mb-1">CAM KẾT:</p>
+                      Tôi xin cam kết toàn bộ thông tin khai báo trong đơn này là hoàn toàn trung thực, chính xác và chịu hoàn toàn trách nhiệm trước Ban Chấp hành Hội Sinh viên Trường về tính xác thực của các thông tin đã cung cấp.
+                    </div>
+
+                    {/* Date and Sign signature placeholder */}
+                    <div className="grid grid-cols-2 gap-4 pt-8 font-sans">
+                      <div></div>
+                      <div className="text-center space-y-1">
+                        <p className="italic text-gray-500 text-[10px]">Đồng Tháp, ngày {new Date().getDate()} tháng {new Date().getMonth() + 1} năm {new Date().getFullYear()}</p>
+                        <p className="font-bold text-gray-800">NGƯỜI ĐĂNG KÝ</p>
+                        <p className="text-[9px] text-gray-400 italic">(Ký và ghi rõ họ tên)</p>
+                        <div className="h-16"></div>
+                        <p className="font-bold text-gray-900 uppercase tracking-wide">{viewingRegistrationStudent.name}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
     </div>

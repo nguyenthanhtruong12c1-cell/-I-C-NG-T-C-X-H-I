@@ -19,7 +19,10 @@ import {
   Sparkles,
   Calendar,
   MapPin,
-  AlertCircle
+  AlertCircle,
+  FileText,
+  X,
+  Download
 } from 'lucide-react';
 
 const STORAGE_KEY_CAMPAIGNS = 'vol_portal_campaigns';
@@ -27,6 +30,22 @@ const STORAGE_KEY_STUDENTS = 'vol_portal_students';
 const STORAGE_KEY_REGISTRATIONS = 'vol_portal_registrations';
 const STORAGE_KEY_CURRENT_USER = 'vol_portal_current_user';
 const STORAGE_KEY_ROLE = 'vol_portal_role';
+
+const AVAILABLE_SKILLS = [
+  'Tình nguyện viên trực tiếp (hậu cần)',
+  'Tình nguyện viên trực tuyến',
+  'Ca hát',
+  'Nhảy, múa',
+  'Dẫn chương trình (MC)',
+  'Lễ tân',
+  'Thiết kế Canva',
+  'Photoshop / CorelDRAW',
+  'Ứng dụng AI sáng tạo',
+  'Quay phim, Chụp ảnh',
+  'Viết lách',
+  'Soạn thảo văn bản (Word)',
+  'Thuyết trình'
+];
 
 export default function App() {
   // Session States
@@ -69,9 +88,27 @@ export default function App() {
   const [regId, setRegId] = useState('');
   const [regFaculty, setRegFaculty] = useState('Khoa Giáo dục Tiểu học - Mầm non');
   const [regClass, setRegClass] = useState('');
+  const [regBirthDate, setRegBirthDate] = useState('');
   const [regEmail, setRegEmail] = useState('');
   const [regPhone, setRegPhone] = useState('');
+  const [regGender, setRegGender] = useState('Nam');
+  const [regSubBranch, setRegSubBranch] = useState('');
+  const [regMajor, setRegMajor] = useState('');
+  const [regIdCard, setRegIdCard] = useState('');
+  const [regAddress, setRegAddress] = useState('');
+  const [regClub, setRegClub] = useState('');
+  const [regSkills, setRegSkills] = useState<string[]>([]);
+  const [regOtherSkill, setRegOtherSkill] = useState('');
+  const [regAiTool, setRegAiTool] = useState('');
+  const [regPortfolioUrl, setRegPortfolioUrl] = useState('');
+  const [regFacebook, setRegFacebook] = useState('');
+  const [regTikTok, setRegTikTok] = useState('');
+  const [regOtherSocial, setRegOtherSocial] = useState('');
+  const [regCtxhAccumulated, setRegCtxhAccumulated] = useState('');
+  const [regCtxhMissing, setRegCtxhMissing] = useState('');
+  const [regAspiration, setRegAspiration] = useState('');
   const [regSuccess, setRegSuccess] = useState('');
+  const [pendingStudent, setPendingStudent] = useState<Student | null>(null);
 
   // Custom confirmation modal state
   const [confirmModal, setConfirmModal] = useState<{
@@ -198,8 +235,10 @@ export default function App() {
     }
   }, [currentUser, role, campaigns, registrations]);
 
-  // Active student reference computed from current logged in user
-  const activeStudent = (currentUser && role === 'student') ? (currentUser as Student) : students[0];
+  // Active student reference computed dynamically from the students array to prevent stale data
+  const activeStudent = (currentUser && role === 'student') 
+    ? (students.find(s => s.id === currentUser.id || s.studentId === (currentUser as Student).studentId) || (currentUser as Student)) 
+    : students[0];
 
   // Dynamic statistics calculation
   const stats: Statistics = {
@@ -224,6 +263,10 @@ export default function App() {
       // Find student by MSSV
       const found = students.find(s => s.studentId.trim() === loginStudentId.trim());
       if (found) {
+        if (found.status === 'pending') {
+          setLoginError('Hồ sơ Đội viên của bạn đang chờ Ban điều hành (Admin) phê duyệt! Vui lòng quay lại sau.');
+          return;
+        }
         if (found.status === 'locked') {
           setLoginError('Tài khoản sinh viên này đã bị khóa!');
           return;
@@ -249,13 +292,291 @@ export default function App() {
     }
   };
 
+  const handleDownloadDocx = (student: Student) => {
+    const birthDateFormatted = (() => {
+      if (student.birthDate && student.birthDate.includes('-')) {
+        const parts = student.birthDate.split('-');
+        if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+      }
+      return student.birthDate || '........................';
+    })();
+
+    const pairedSkills: string[] = [];
+    for (let i = 0; i < AVAILABLE_SKILLS.length; i += 2) {
+      const s1 = AVAILABLE_SKILLS[i];
+      const s2 = AVAILABLE_SKILLS[i + 1] || '';
+      const checked1 = student.skills?.includes(s1);
+      const checked2 = s2 ? student.skills?.includes(s2) : false;
+      
+      pairedSkills.push(`
+        <tr>
+          <td style="width: 50%; font-size: 11pt; padding: 4px 0; vertical-align: top;">
+            ${checked1 ? '&#x2612;' : '&#x2610;'} ${s1}
+          </td>
+          <td style="width: 50%; font-size: 11pt; padding: 4px 0; vertical-align: top;">
+            ${s2 ? (checked2 ? '&#x2612;' : '&#x2610;') + ' ' + s2 : ''}
+          </td>
+        </tr>
+      `);
+    }
+
+    const currentDate = new Date();
+    const currentDay = currentDate.getDate();
+    const currentMonth = currentDate.getMonth() + 1;
+    const currentYear = currentDate.getFullYear();
+
+    const docHtml = `
+      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+      <head>
+        <meta charset="utf-8">
+        <title>Don dang ky tham gia Doi CTXH - ${student.name}</title>
+        <style>
+          @page {
+            size: 8.27in 11.69in; /* A4 */
+            margin: 1.0in 1.0in 1.0in 1.0in;
+          }
+          body {
+            font-family: "Times New Roman", Times, serif;
+            font-size: 12pt;
+            line-height: 1.25;
+            color: #000000;
+          }
+          .header-section {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 15px;
+          }
+          .header-section td {
+            vertical-align: top;
+            padding: 0;
+          }
+          .bold {
+            font-weight: bold;
+          }
+          .uppercase {
+            text-transform: uppercase;
+          }
+          .section-title {
+            font-size: 12pt;
+            font-weight: bold;
+            margin-top: 15px;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+          }
+          .skills-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 10px;
+          }
+          .signature-section {
+            width: 100%;
+            margin-top: 25px;
+            border-collapse: collapse;
+          }
+          .signature-section td {
+            width: 50%;
+            text-align: center;
+            vertical-align: top;
+          }
+        </style>
+      </head>
+      <body>
+        <table class="header-section">
+          <tr>
+            <td style="width: 60%; text-align: center;">
+              <span class="bold" style="font-size: 11pt;">HỘI SINH VIÊN VIỆT NAM</span><br>
+              <span class="bold" style="font-size: 11pt;">BCH HỘI SINH VIÊN VIỆT NAM</span><br>
+              <span class="bold" style="font-size: 11pt; border-bottom: 1px solid #000; padding-bottom: 3px; display: inline-block;">TRƯỜNG ĐẠI HỌC ĐỒNG THÁP</span><br>
+              <span style="font-size: 10pt; display: block; margin-top: 4px;">***</span>
+            </td>
+            <td style="width: 40%; text-align: right; font-size: 11pt; font-style: italic; padding-right: 20px;">
+              Số: ....................
+            </td>
+          </tr>
+        </table>
+
+        <!-- Photo box and Title alignment -->
+        <table style="width: 100%; border-collapse: collapse; margin-top: 10px;">
+          <tr>
+            <td style="width: 25%; vertical-align: top;">
+              <div style="border: 1px solid #000000; width: 100px; height: 133px; text-align: center; font-size: 9pt; display: table-cell; vertical-align: middle; padding: 5px;">
+                Dán<br>ảnh 3x4<br>hoặc<br>4x6
+              </div>
+            </td>
+            <td style="width: 75%; vertical-align: top; text-align: center; padding-top: 10px;">
+              <div class="bold" style="font-size: 14pt;">ĐƠN ĐĂNG KÝ THAM GIA</div>
+              <div class="bold" style="font-size: 13pt;">ĐỘI CÔNG TÁC XÃ HỘI TRƯỜNG ĐẠI HỌC ĐỒNG THÁP</div>
+              <div style="margin-top: 5px; font-size: 11pt;">-------------------------</div>
+            </td>
+          </tr>
+        </table>
+
+        <div class="kính-gửi" style="font-size: 12pt; font-weight: bold; text-align: center; margin-top: 20px; margin-bottom: 20px;">
+          Kính gửi: Ban Thư ký Hội Sinh viên Trường Đại học Đồng Tháp
+        </div>
+
+        <div class="section-title">PHẦN I. THÔNG TIN CÁ NHÂN</div>
+        
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px;">
+          <tr>
+            <td colspan="2" style="padding: 4px 0;">1. Họ và tên (<i>viết in hoa</i>): <span style="font-weight: bold; text-transform: uppercase;">${student.name}</span></td>
+          </tr>
+          <tr>
+            <td style="width: 45%; padding: 4px 0;">2. Giới tính: &nbsp;&nbsp; ${student.gender === 'Nam' ? '&#x2612; Nam' : '&#x2610; Nam'}&nbsp;&nbsp;&nbsp;&nbsp;${student.gender === 'Nữ' ? '&#x2612; Nữ' : '&#x2610; Nữ'}</td>
+            <td style="width: 55%; padding: 4px 0;">Ngày, tháng, năm sinh: <span style="font-weight: bold;">${birthDateFormatted}</span></td>
+          </tr>
+          <tr>
+            <td colspan="2" style="padding: 4px 0;">3. Chi hội: <span style="font-weight: bold;">${student.subBranch || '................................................'}</span></td>
+          </tr>
+          <tr>
+            <td colspan="2" style="padding: 4px 0;">4. Khoa: <span style="font-weight: bold;">${student.faculty}</span></td>
+          </tr>
+          <tr>
+            <td colspan="2" style="padding: 4px 0;">5. Ngành học: <span style="font-weight: bold;">${student.major || '................................................'}</span></td>
+          </tr>
+          <tr>
+            <td colspan="2" style="padding: 4px 0;">6. Số căn cước công dân: <span style="font-weight: bold;">${student.idCard || '................................................'}</span></td>
+          </tr>
+          <tr>
+            <td colspan="2" style="padding: 4px 0;">7. Địa chỉ thường trú (<i>xã/phường, tỉnh</i>): <span style="font-weight: bold;">${student.address || '................................................'}</span></td>
+          </tr>
+          <tr>
+            <td colspan="2" style="padding: 4px 0;">8. Địa chỉ email: <span style="font-weight: bold;">${student.email}</span></td>
+          </tr>
+          <tr>
+            <td colspan="2" style="padding: 4px 0;">9. Số điện thoại liên hệ: <span style="font-weight: bold;">${student.phone}</span></td>
+          </tr>
+          <tr>
+            <td colspan="2" style="padding: 4px 0;">10. Tên câu lạc bộ/ đội/ nhóm bạn đang tham gia (nếu có): <span style="font-weight: bold;">${student.club || 'Không tham gia'}</span></td>
+          </tr>
+        </table>
+
+        <div class="section-title">PHẦN II. ĐẶC ĐIỂM CÁ NHÂN VÀ NGUYỆN VỌNG</div>
+        
+        <div style="margin-bottom: 8px; font-weight: bold;">1. Sở trường và kỹ năng bản thân (<i>Đánh dấu &checkmark; vào ô phù hợp</i>):</div>
+        
+        <table class="skills-table">
+          ${pairedSkills.join('')}
+        </table>
+
+        <table style="width: 100%; border-collapse: collapse; margin-top: 10px; margin-bottom: 15px;">
+          <tr>
+            <td style="padding: 4px 0; vertical-align: top;">Kỹ năng khác (ghi rõ): <span style="font-weight: bold;">${student.otherSkill || 'Không có'}</span></td>
+          </tr>
+          <tr>
+            <td style="padding: 4px 0; vertical-align: top;">Tên công cụ AI bạn sử dụng thành thạo nhất: <span style="font-weight: bold;">${student.aiTool || 'Không có'}</span></td>
+          </tr>
+          <tr>
+            <td style="padding: 4px 0; vertical-align: top; line-height: 1.4;">
+              Sản phẩm của bạn đã thực hiện được: <span style="font-weight: bold;">${student.portfolioUrl || 'Chưa cập nhật'}</span>
+            </td>
+          </tr>
+        </table>
+
+        <div style="margin-bottom: 8px; font-weight: bold;">2. Địa chỉ mạng xã hội cá nhân:</div>
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px; margin-left: 15px;">
+          <tr>
+            <td style="padding: 3px 0;">- Facebook: <span style="font-weight: bold;">${student.facebook || '................................................'}</span></td>
+          </tr>
+          <tr>
+            <td style="padding: 3px 0;">- TikTok: <span style="font-weight: bold;">${student.tiktok || '................................................'}</span></td>
+          </tr>
+          <tr>
+            <td style="padding: 3px 0;">- Khác (nếu có): <span style="font-weight: bold;">${student.otherSocial || '................................................'}</span></td>
+          </tr>
+        </table>
+
+        <div style="margin-bottom: 8px; font-weight: bold;">3. Tiến độ tích lũy ngày Công tác xã hội:</div>
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 15px; margin-left: 15px;">
+          <tr>
+            <td style="width: 50%; padding: 3px 0;">Số ngày CTXH đã tích lũy: <span style="font-weight: bold;">${student.ctxhAccumulated ?? 0} ngày</span></td>
+            <td style="width: 50%; padding: 3px 0;">Số ngày CTXH còn thiếu: <span style="font-weight: bold;">${student.ctxhMissing ?? 0} ngày</span></td>
+          </tr>
+        </table>
+
+        <div style="margin-bottom: 8px; font-weight: bold;">4. Nguyện vọng / Kỳ vọng cá nhân khi tham gia Đội Công tác xã hội:</div>
+        <div style="border: 1px solid #cccccc; padding: 10px; min-height: 60px; font-style: italic; margin-bottom: 20px; line-height: 1.4; text-align: justify;">
+          ${student.aspiration || 'Không có nguyện vọng đặc biệt.'}
+        </div>
+
+        <div style="text-align: justify; line-height: 1.4; margin-top: 15px; font-size: 11pt;">
+          <span class="bold">CAM KẾT:</span> Tôi xin cam kết toàn bộ thông tin khai báo trong đơn này là hoàn toàn trung thực, chính xác và chịu hoàn toàn trách nhiệm trước Ban Chấp hành Hội Sinh viên Trường về tính xác thực của các thông tin đã cung cấp.
+        </div>
+
+        <table class="signature-section">
+          <tr>
+            <td style="width: 45%;"></td>
+            <td style="width: 55%; font-size: 11pt;">
+              <i>Đồng Tháp, ngày ${currentDay} tháng ${currentMonth} năm ${currentYear}</i><br>
+              <span class="bold" style="display: block; margin-top: 5px;">NGƯỜI ĐĂNG KÝ</span>
+              <span style="font-size: 9pt; display: block; margin-top: 2px;"><i>(Ký và ghi rõ họ tên)</i></span>
+              <br><br><br><br>
+              <span class="bold" style="text-transform: uppercase;">${student.name}</span>
+            </td>
+          </tr>
+        </table>
+      </body>
+      </html>
+    `;
+
+    const blob = new Blob(['\ufeff' + docHtml], { type: 'application/msword;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Don_Dang_Ky_CTXH_${student.name.replace(/\s+/g, '_')}.doc`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleConfirmSignUp = () => {
+    if (!pendingStudent) return;
+
+    const updatedStudents = [...students, pendingStudent];
+    setStudents(updatedStudents);
+    
+    // Auto fill login ID and show success
+    setLoginStudentId(pendingStudent.studentId);
+    setRegSuccess('Đăng ký Đội viên thành công! Hồ sơ của bạn đã được chuyển đến Ban điều hành (Admin) để phê duyệt. Vui lòng liên hệ Đoàn - Hội khoa để được duyệt sớm. File phiếu đăng ký Word (.doc) của bạn đã được tải xuống tự động.');
+    setShowSignUp(false);
+
+    // Trigger word download
+    handleDownloadDocx(pendingStudent);
+
+    // Reset states
+    setPendingStudent(null);
+    setRegName('');
+    setRegId('');
+    setRegClass('');
+    setRegBirthDate('');
+    setRegEmail('');
+    setRegPhone('');
+    setRegGender('Nam');
+    setRegSubBranch('');
+    setRegMajor('');
+    setRegIdCard('');
+    setRegAddress('');
+    setRegClub('');
+    setRegSkills([]);
+    setRegOtherSkill('');
+    setRegAiTool('');
+    setRegPortfolioUrl('');
+    setRegFacebook('');
+    setRegTikTok('');
+    setRegOtherSocial('');
+    setRegCtxhAccumulated('');
+    setRegCtxhMissing('');
+    setRegAspiration('');
+  };
+
   const handleSignUp = (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
     setRegSuccess('');
 
-    if (!regName || !regId || !regClass || !regEmail || !regPhone) {
-      setLoginError('Vui lòng điền đầy đủ tất cả các trường!');
+    if (!regName || !regId || !regClass || !regBirthDate || !regEmail || !regPhone || !regIdCard || !regAddress || !regMajor) {
+      setLoginError('Vui lòng điền đầy đủ các thông tin cá nhân bắt buộc (có dấu *)!');
       return;
     }
 
@@ -268,32 +589,37 @@ export default function App() {
 
     const newStudent: Student = {
       id: `std-${Date.now()}`,
-      name: regName,
-      studentId: regId,
+      name: regName.trim().toUpperCase(),
+      studentId: regId.trim(),
       faculty: regFaculty,
-      className: regClass,
-      email: regEmail,
-      phone: regPhone,
+      className: regClass.trim(),
+      email: regEmail.trim(),
+      phone: regPhone.trim(),
+      birthDate: regBirthDate,
+      gender: regGender,
+      subBranch: regSubBranch.trim(),
+      major: regMajor.trim(),
+      idCard: regIdCard.trim(),
+      address: regAddress.trim(),
+      club: regClub.trim(),
+      skills: regSkills,
+      otherSkill: regOtherSkill.trim(),
+      aiTool: regAiTool.trim(),
+      portfolioUrl: regPortfolioUrl.trim(),
+      facebook: regFacebook.trim(),
+      tiktok: regTikTok.trim(),
+      otherSocial: regOtherSocial.trim(),
+      ctxhAccumulated: regCtxhAccumulated ? parseFloat(regCtxhAccumulated) : 0,
+      ctxhMissing: regCtxhMissing ? parseFloat(regCtxhMissing) : 0,
+      aspiration: regAspiration.trim(),
       totalHours: 0,
       totalScore: 0,
-      status: 'active',
+      status: 'pending',
       role: 'student'
     };
 
-    const updatedStudents = [...students, newStudent];
-    setStudents(updatedStudents);
-    
-    // Auto fill login ID and show success
-    setLoginStudentId(regId);
-    setRegSuccess('Đăng ký tài khoản thành công! Nhập MSSV của bạn để đăng nhập ngay.');
-    setShowSignUp(false);
-
-    // Reset fields
-    setRegName('');
-    setRegId('');
-    setRegClass('');
-    setRegEmail('');
-    setRegPhone('');
+    // Open confirmation preview document instead of saving directly
+    setPendingStudent(newStudent);
   };
 
   const handleLogout = () => {
@@ -423,6 +749,16 @@ export default function App() {
     }));
   };
 
+  // Approve or reject student registration
+  const handleApproveStudent = (studentId: string, approved: boolean) => {
+    setStudents(prev => prev.map(s => {
+      if (s.id === studentId) {
+        return { ...s, status: approved ? 'active' : 'locked' };
+      }
+      return s;
+    }));
+  };
+
   // Toggle student leadership role
   const handleToggleLeaderRole = (studentId: string) => {
     setStudents(prev => prev.map(s => {
@@ -544,24 +880,20 @@ export default function App() {
           
           {/* Logo & Scholastic Identity */}
           <div className="flex items-center gap-3">
-            <div className="shrink-0">
-              <img 
-                src="https://upload.wikimedia.org/wikipedia/commons/c/ca/Logo_H%E1%BB%99i_Sinh_vi%C3%AAn_Vi%E1%BB%87t_Nam.svg" 
-                alt="Logo Hội Sinh viên Việt Nam" 
-                className="w-10 h-10 object-contain"
-                referrerPolicy="no-referrer"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).src = "https://upload.wikimedia.org/wikipedia/commons/thumb/c/ca/Logo_H%E1%BB%99i_Sinh_vi%C3%AAn_Vi%E1%BB%87t_Nam.svg/512px-Logo_H%E1%BB%99i_Sinh_vi%C3%AAn_Vi%E1%BB%87t_Nam.svg.png";
-                }}
-              />
-            </div>
+            <div className="shrink-0 w-10 h-10 bg-white rounded-full border border-gray-100 shadow-xs overflow-hidden flex items-center justify-center">
+  <img 
+    src="https://i.postimg.cc/RFkjyCyr/a.png" 
+    alt="Logo Hội Sinh viên Việt Nam" 
+    className="w-full h-full object-cover rounded-full"
+  />
+</div>
 
             <div>
               <h1 className="text-xs sm:text-sm font-display font-bold text-[#00529C] uppercase tracking-wide line-clamp-1">
-                Phần mềm Quản lý Tình nguyện & Công tác Xã hội
+                HỘI SINH VIÊN TRƯỜNG ĐẠI HỌC ĐỒNG THÁP
               </h1>
               <p className="text-[9px] sm:text-[10px] text-gray-400 font-semibold uppercase tracking-wider">
-                Hội Sinh viên Trường Đại học Đồng Tháp
+                Đội công tác xã hội
               </p>
             </div>
           </div>
@@ -597,7 +929,7 @@ export default function App() {
         
         {/* VIEW A: NOT LOGGED IN - SHOW BEAUTIFUL LOGIN SCREEN */}
         {!currentUser ? (
-          <div className="max-w-md mx-auto px-4 py-12 flex flex-col justify-center min-h-[70vh]">
+          <div className={`${showSignUp ? 'max-w-2xl' : 'max-w-md'} mx-auto px-4 py-12 flex flex-col justify-center min-h-[70vh] transition-all duration-300`}>
             
             {/* Dynamic Login / Registration Box */}
             <div className="bg-white rounded-2xl p-6 md:p-8 border border-gray-100 shadow-md flex flex-col justify-between">
@@ -605,20 +937,18 @@ export default function App() {
               <div>
                 {/* Header text */}
                 <div className="mb-6 flex flex-col items-center text-center">
-                  <img 
-                    src="https://upload.wikimedia.org/wikipedia/commons/c/ca/Logo_H%E1%BB%99i_Sinh_vi%C3%AAn_Vi%E1%BB%87t_Nam.svg" 
-                    alt="Logo Hội Sinh viên Việt Nam" 
-                    className="w-16 h-16 object-contain mb-3"
-                    referrerPolicy="no-referrer"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src = "https://upload.wikimedia.org/wikipedia/commons/thumb/c/ca/Logo_H%E1%BB%99i_Sinh_vi%C3%AAn_Vi%E1%BB%87t_Nam.svg/512px-Logo_H%E1%BB%99i_Sinh_vi%C3%AAn_Vi%E1%BB%87t_Nam.svg.png";
-                    }}
-                  />
+        <div className="w-20 h-20 rounded-full bg-white border border-gray-100 shadow-md flex items-center justify-center mb-3 overflow-hidden">
+  <img 
+    src="https://i.postimg.cc/RFkjyCyr/a.png" 
+    alt="Logo Hội Sinh viên Việt Nam" 
+    className="w-full h-full object-cover rounded-full"
+  />
+</div>
                   <h3 className="text-lg font-display font-bold text-gray-800">
                     {showSignUp ? 'Đăng ký tài khoản Đội viên' : 'Đăng nhập hệ thống'}
                   </h3>
                   <p className="text-xs text-gray-400 mt-1 max-w-xs mx-auto">
-                    {showSignUp ? 'Vui lòng cung cấp chính xác thông tin để Đoàn trường tích luỹ ĐRL cho bạn' : 'Chọn phân hệ tương ứng bên dưới để bắt đầu sử dụng'}
+                    {showSignUp ? '' : 'Chọn phân hệ tương ứng bên dưới để bắt đầu sử dụng'}
                   </p>
                 </div>
 
@@ -720,94 +1050,349 @@ export default function App() {
                     </form>
                   </>
                 ) : (
-                  /* SIGN UP FORM (Dynamic creation) */
-                  <form onSubmit={handleSignUp} className="space-y-3 text-xs">
-                    <div className="space-y-1">
-                      <label className="text-gray-500 font-semibold">Họ và tên *</label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="Ví dụ: Nguyễn Văn A"
-                        value={regName}
-                        onChange={(e) => setRegName(e.target.value)}
-                        className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
+                  /* SIGN UP FORM (Dynamic creation with expanded fields) */
+                  <form onSubmit={handleSignUp} className="space-y-6 text-xs text-left">
+                    {/* PART I: PERSONAL INFO */}
+                    <div className="space-y-4 border-b border-gray-100 pb-5">
+                      <h4 className="font-bold text-[#00529C] text-sm border-l-4 border-[#00529C] pl-2 uppercase tracking-wide">
+                        PHẦN I. THÔNG TIN CÁ NHÂN
+                      </h4>
+                      
                       <div className="space-y-1">
-                        <label className="text-gray-500 font-semibold">MSSV *</label>
+                        <label className="text-gray-600 font-semibold flex items-center justify-between">
+                          <span>1. Họ và tên (viết in hoa) *</span>
+                          <span className="text-[10px] text-gray-400 font-normal">Sẽ tự động viết hoa</span>
+                        </label>
                         <input
                           type="text"
                           required
-                          placeholder="Ví dụ: 0022110255"
-                          value={regId}
-                          onChange={(e) => setRegId(e.target.value)}
-                          className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none"
+                          placeholder="VÍ DỤ: NGUYỄN VĂN A"
+                          value={regName}
+                          onChange={(e) => setRegName(e.target.value.toUpperCase())}
+                          className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#00529C]/15 font-semibold text-gray-800"
                         />
                       </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <label className="text-gray-600 font-semibold">2. Giới tính *</label>
+                          <div className="flex gap-4 p-2.5 bg-gray-50 border border-gray-200 rounded-xl">
+                            <label className="flex items-center gap-1.5 cursor-pointer font-medium text-gray-700">
+                              <input
+                                type="radio"
+                                name="gender"
+                                value="Nam"
+                                checked={regGender === 'Nam'}
+                                onChange={() => setRegGender('Nam')}
+                                className="accent-[#00529C]"
+                              />
+                              Nam
+                            </label>
+                            <label className="flex items-center gap-1.5 cursor-pointer font-medium text-gray-700">
+                              <input
+                                type="radio"
+                                name="gender"
+                                value="Nữ"
+                                checked={regGender === 'Nữ'}
+                                onChange={() => setRegGender('Nữ')}
+                                className="accent-[#00529C]"
+                              />
+                              Nữ
+                            </label>
+                          </div>
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-gray-600 font-semibold">Ngày, tháng, năm sinh (dd/mm/yyyy) *</label>
+                          <input
+                            type="date"
+                            required
+                            value={regBirthDate}
+                            onChange={(e) => setRegBirthDate(e.target.value)}
+                            className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <label className="text-gray-600 font-semibold">3. Chi hội *</label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="Ví dụ: Chi hội 24CNTT"
+                            value={regSubBranch}
+                            onChange={(e) => setRegSubBranch(e.target.value)}
+                            className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-gray-600 font-semibold">4. Khoa *</label>
+                          <select
+                            value={regFaculty}
+                            onChange={(e) => setRegFaculty(e.target.value)}
+                            className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none font-semibold text-gray-700 cursor-pointer text-xs"
+                          >
+                            <option value="Khoa Giáo dục Tiểu học - Mầm non">Khoa Giáo dục Tiểu học - Mầm non</option>
+                            <option value="Khoa Sư phạm Toán - Tin">Khoa Sư phạm Toán - Tin</option>
+                            <option value="Khoa Sư phạm Khoa học tự nhiên">Khoa Sư phạm Khoa học tự nhiên</option>
+                            <option value="Khoa Sư phạm Khoa học xã hội">Khoa Sư phạm Khoa học xã hội</option>
+                            <option value="Khoa Giáo dục Chính trị và Quản lý giáo dục">Khoa Giáo dục Chính trị và Quản lý giáo dục</option>
+                            <option value="Khoa Giáo dục Thể chất - Sư phạm Nghệ thuật">Khoa Giáo dục Thể chất - Sư phạm Nghệ thuật</option>
+                            <option value="Khoa Công nghệ và Kỹ thuật">Khoa Công nghệ và Kỹ thuật</option>
+                            <option value="Khoa Kinh tế - Luật">Khoa Kinh tế - Luật</option>
+                            <option value="Khoa Nông nghiệp, Tài nguyên và Môi trường">Khoa Nông nghiệp, Tài nguyên và Môi trường</option>
+                            <option value="Khoa Ngoại ngữ">Khoa Ngoại ngữ</option>
+                            <option value="Khoa Văn hóa - Du lịch và Công tác xã hội">Khoa Văn hóa - Du lịch và Công tác xã hội</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <label className="text-gray-600 font-semibold">5. Ngành học *</label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="Ví dụ: Công nghệ Thông tin"
+                            value={regMajor}
+                            onChange={(e) => setRegMajor(e.target.value)}
+                            className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-gray-600 font-semibold">6. Số căn cước công dân *</label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="Ví dụ: 030024005123"
+                            value={regIdCard}
+                            onChange={(e) => setRegIdCard(e.target.value.replace(/[^0-9]/g, ''))}
+                            className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none"
+                          />
+                        </div>
+                      </div>
+
                       <div className="space-y-1">
-                        <label className="text-gray-500 font-semibold">Lớp *</label>
+                        <label className="text-gray-600 font-semibold">7. Địa chỉ thường trú (xã/phường, tỉnh) *</label>
                         <input
                           type="text"
                           required
-                          placeholder="Ví dụ: ĐHSKHTN24A"
-                          value={regClass}
-                          onChange={(e) => setRegClass(e.target.value)}
+                          placeholder="Ví dụ: Phường 1, TP. Cao Lãnh, Đồng Tháp"
+                          value={regAddress}
+                          onChange={(e) => setRegAddress(e.target.value)}
                           className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none"
                         />
                       </div>
-                    </div>
 
-                    <div className="space-y-1">
-                      <label className="text-gray-500 font-semibold">Khoa *</label>
-                      <select
-                        value={regFaculty}
-                        onChange={(e) => setRegFaculty(e.target.value)}
-                        className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none font-semibold text-gray-700 cursor-pointer text-xs"
-                      >
-                        <option value="Khoa Giáo dục Tiểu học - Mầm non">Khoa Giáo dục Tiểu học - Mầm non</option>
-                        <option value="Khoa Sư phạm Toán - Tin">Khoa Sư phạm Toán - Tin</option>
-                        <option value="Khoa Sư phạm Khoa học tự nhiên">Khoa Sư phạm Khoa học tự nhiên</option>
-                        <option value="Khoa Sư phạm Khoa học xã hội">Khoa Sư phạm Khoa học xã hội</option>
-                        <option value="Khoa Giáo dục Chính trị và Quản lý giáo dục">Khoa Giáo dục Chính trị và Quản lý giáo dục</option>
-                        <option value="Khoa Giáo dục Thể chất - Sư phạm Nghệ thuật">Khoa Giáo dục Thể chất - Sư phạm Nghệ thuật</option>
-                        <option value="Khoa Công nghệ và Kỹ thuật">Khoa Công nghệ và Kỹ thuật</option>
-                        <option value="Khoa Kinh tế - Luật">Khoa Kinh tế - Luật</option>
-                        <option value="Khoa Nông nghiệp, Tài nguyên và Môi trường">Khoa Nông nghiệp, Tài nguyên và Môi trường</option>
-                        <option value="Khoa Ngoại ngữ">Khoa Ngoại ngữ</option>
-                        <option value="Khoa Văn hóa - Du lịch và Công tác xã hội">Khoa Văn hóa - Du lịch và Công tác xã hội</option>
-                      </select>
-                    </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <label className="text-gray-600 font-semibold">8. Địa chỉ email *</label>
+                          <input
+                            type="email"
+                            required
+                            placeholder="nguyenvana@dthu.edu.vn"
+                            value={regEmail}
+                            onChange={(e) => setRegEmail(e.target.value)}
+                            className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-gray-600 font-semibold">9. Số điện thoại liên hệ *</label>
+                          <input
+                            type="tel"
+                            required
+                            placeholder="Ví dụ: 0912345678"
+                            value={regPhone}
+                            onChange={(e) => setRegPhone(e.target.value)}
+                            className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none"
+                          />
+                        </div>
+                      </div>
 
-                    <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1">
-                        <label className="text-gray-500 font-semibold">Email *</label>
+                        <label className="text-gray-600 font-semibold">10. Tên câu lạc bộ/ đội/ nhóm bạn đang tham gia (nếu có)</label>
                         <input
-                          type="email"
-                          required
-                          placeholder="nguyenvana@student.edu.vn"
-                          value={regEmail}
-                          onChange={(e) => setRegEmail(e.target.value)}
+                          type="text"
+                          placeholder="Ví dụ: CLB Sách và Hành động"
+                          value={regClub}
+                          onChange={(e) => setRegClub(e.target.value)}
                           className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none"
                         />
                       </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <label className="text-gray-600 font-semibold">Mã số Sinh viên (MSSV) *</label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="Ví dụ: 0024415123"
+                            value={regId}
+                            onChange={(e) => setRegId(e.target.value)}
+                            className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-gray-600 font-semibold">Lớp *</label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="Ví dụ: DK24CNTT"
+                            value={regClass}
+                            onChange={(e) => setRegClass(e.target.value)}
+                            className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* PART II: PERSONAL FEATURES & ASPIRATIONS */}
+                    <div className="space-y-4">
+                      <h4 className="font-bold text-emerald-600 text-sm border-l-4 border-emerald-500 pl-2 uppercase tracking-wide">
+                        PHẦN II. ĐẶC ĐIỂM CÁ NHÂN VÀ NGUYỆN VỌNG
+                      </h4>
+
+                      <div className="space-y-2">
+                        <label className="text-gray-600 font-semibold block">
+                          1. Sở trường và kỹ năng bản thân (Đánh dấu ✓ vào ô phù hợp):
+                        </label>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-gray-50 p-3 rounded-xl border border-gray-200">
+                          {AVAILABLE_SKILLS.map((skill) => {
+                            const isChecked = regSkills.includes(skill);
+                            return (
+                              <label key={skill} className="flex items-start gap-2 cursor-pointer p-1.5 hover:bg-gray-100 rounded-lg transition-colors text-[11px] text-gray-700 font-medium">
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={() => {
+                                    if (isChecked) {
+                                      setRegSkills(regSkills.filter(s => s !== skill));
+                                    } else {
+                                      setRegSkills([...regSkills, skill]);
+                                    }
+                                  }}
+                                  className="mt-0.5 accent-[#00529C]"
+                                />
+                                <span>{skill}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+
                       <div className="space-y-1">
-                        <label className="text-gray-500 font-semibold">Số điện thoại *</label>
+                        <label className="text-gray-600 font-semibold">Kỹ năng khác (ghi rõ):</label>
                         <input
-                          type="tel"
-                          required
-                          placeholder="0912..."
-                          value={regPhone}
-                          onChange={(e) => setRegPhone(e.target.value)}
+                          type="text"
+                          placeholder="Ví dụ: Biết chơi guitar, thiết kế web..."
+                          value={regOtherSkill}
+                          onChange={(e) => setRegOtherSkill(e.target.value)}
                           className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-gray-600 font-semibold">Tên công cụ AI bạn sử dụng thành thạo nhất:</label>
+                        <input
+                          type="text"
+                          placeholder="Ví dụ: Gemini, ChatGPT, Midjourney..."
+                          value={regAiTool}
+                          onChange={(e) => setRegAiTool(e.target.value)}
+                          className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-gray-600 font-semibold text-[11px]">Sản phẩm của bạn đã thực hiện được (bài hát, ảnh chụp, tin đã viết, video đã thiết kế/ thực hiện,... đính kèm lên link google, share link nếu có):</label>
+                        <input
+                          type="text"
+                          placeholder="Ví dụ: https://drive.google.com/drive/folders/..."
+                          value={regPortfolioUrl}
+                          onChange={(e) => setRegPortfolioUrl(e.target.value)}
+                          className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none"
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-gray-600 font-semibold block">2. Địa chỉ mạng xã hội cá nhân:</label>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          <div className="space-y-1">
+                            <span className="text-[10px] text-gray-400 font-bold uppercase">Facebook:</span>
+                            <input
+                              type="text"
+                              placeholder="Facebook link hoặc tên"
+                              value={regFacebook}
+                              onChange={(e) => setRegFacebook(e.target.value)}
+                              className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none text-[11px]"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <span className="text-[10px] text-gray-400 font-bold uppercase">TikTok:</span>
+                            <input
+                              type="text"
+                              placeholder="TikTok link hoặc tên"
+                              value={regTikTok}
+                              onChange={(e) => setRegTikTok(e.target.value)}
+                              className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none text-[11px]"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <span className="text-[10px] text-gray-400 font-bold uppercase">Mạng xã hội khác (nếu có):</span>
+                            <input
+                              type="text"
+                              placeholder="Zalo, Instagram..."
+                              value={regOtherSocial}
+                              onChange={(e) => setRegOtherSocial(e.target.value)}
+                              className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none text-[11px]"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-gray-600 font-semibold block">3. Tiến độ tích lũy ngày Công tác xã hội:</label>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <span className="text-[10px] text-gray-400 font-bold uppercase">Số ngày CTXH đã tích lũy:</span>
+                            <input
+                              type="number"
+                              min="0"
+                              placeholder="Ví dụ: 5"
+                              value={regCtxhAccumulated}
+                              onChange={(e) => setRegCtxhAccumulated(e.target.value)}
+                              className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none text-[11px]"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <span className="text-[10px] text-gray-400 font-bold uppercase">Số ngày CTXH còn thiếu:</span>
+                            <input
+                              type="number"
+                              min="0"
+                              placeholder="Ví dụ: 10"
+                              value={regCtxhMissing}
+                              onChange={(e) => setRegCtxhMissing(e.target.value)}
+                              className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none text-[11px]"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-gray-600 font-semibold">4. Nguyện vọng / Kỳ vọng cá nhân khi tham gia Đội Công tác xã hội:</label>
+                        <textarea
+                          placeholder="Thông tin này có thể bỏ trống, không cần bắt buộc phải điền"
+                          value={regAspiration}
+                          onChange={(e) => setRegAspiration(e.target.value)}
+                          rows={3}
+                          className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none resize-none text-xs"
                         />
                       </div>
                     </div>
 
                     <button
                       type="submit"
-                      className="w-full py-3 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl text-xs font-bold shadow-xs hover:shadow transition-all flex items-center justify-center gap-1.5"
+                      className="w-full py-3 bg-gradient-to-r from-[#00529C] to-blue-600 hover:from-blue-700 hover:to-blue-800 text-white rounded-xl text-xs font-bold shadow-xs hover:shadow transition-all flex items-center justify-center gap-1.5 mt-4"
                     >
                       <UserPlus className="w-4 h-4" />
                       Xác nhận đăng ký Đội viên
@@ -866,6 +1451,8 @@ export default function App() {
                 onDeleteStudent={handleDeleteStudent}
                 onDeleteCampaign={handleDeleteCampaign}
                 onUpdateCampaignStatus={handleUpdateCampaignStatus}
+                onApproveStudent={handleApproveStudent}
+                onDownloadDocx={handleDownloadDocx}
               />
             )}
           </main>
@@ -933,6 +1520,277 @@ export default function App() {
               >
                 Đã hiểu
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: DOCUMENT PREVIEW */}
+      {pendingStudent && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-gray-100 rounded-2xl max-w-4xl w-full shadow-2xl border border-gray-100 overflow-hidden flex flex-col h-[95vh] animate-fade-in">
+            {/* Header */}
+            <div className="px-6 py-4 bg-gradient-to-r from-[#00529C] to-blue-600 text-white flex items-center justify-between shrink-0 shadow-md">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-white/10 rounded-xl">
+                  <FileText className="w-5 h-5 text-white animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="font-display font-bold text-sm">
+                    Xác nhận Thông tin & Ký tên Đơn đăng ký Đội viên
+                  </h3>
+                  <p className="text-[10px] text-blue-100 uppercase tracking-wider font-semibold mt-0.5">
+                    Hội Sinh viên Trường Đại học Đồng Tháp • Đội Công tác Xã hội
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setPendingStudent(null)}
+                className="text-white/80 hover:text-white p-1.5 hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Document Content Container (Simulating A4 paper) */}
+            <div className="flex-1 p-4 md:p-8 overflow-y-auto bg-gray-200/50 flex justify-center">
+              <div className="bg-white max-w-3xl w-full shadow-lg border border-gray-200 p-8 md:p-14 text-xs text-black font-serif leading-relaxed relative min-h-[1100px]">
+                
+                {/* Standard Document Header */}
+                <div className="flex justify-between items-start border-b border-gray-100 pb-4 mb-6">
+                  <div className="text-center font-bold font-sans tracking-wide text-[10px] sm:text-xs">
+                    <p className="text-gray-900">HỘI SINH VIÊN VIỆT NAM</p>
+                    <p className="text-gray-900 text-[10px]">BCH HỘI SINH VIÊN VIỆT NAM</p>
+                    <p className="text-[#00529C] border-b border-black pb-1.5 inline-block">TRƯỜNG ĐẠI HỌC ĐỒNG THÁP</p>
+                    <p className="mt-1 font-normal text-[8px] text-gray-500">***</p>
+                  </div>
+                  <div className="text-right font-sans italic text-gray-400 text-[10px] pt-1">
+                    Số: ....................
+                  </div>
+                </div>
+
+                {/* Photo space & Document Title */}
+                <div className="grid grid-cols-4 gap-4 items-center mb-8">
+                  <div className="col-span-1">
+                    <div className="border border-dashed border-gray-400 w-24 h-32 rounded flex flex-col items-center justify-center text-center p-2 text-[10px] text-gray-400 font-sans">
+                      <span className="font-bold">Ảnh 3x4</span>
+                      <span>hoặc 4x6</span>
+                    </div>
+                  </div>
+                  <div className="col-span-3 text-center">
+                    <h2 className="font-sans font-extrabold text-gray-900 text-sm sm:text-base leading-tight uppercase tracking-wider">
+                      ĐƠN ĐĂNG KÝ THAM GIA
+                    </h2>
+                    <h3 className="font-sans font-extrabold text-[#00529C] text-xs sm:text-sm mt-1 uppercase tracking-wide">
+                      ĐỘI CÔNG TÁC XÃ HỘI TRƯỜNG ĐẠI HỌC ĐỒNG THÁP
+                    </h3>
+                    <div className="text-gray-400 tracking-widest font-sans font-light mt-1 text-xs">-------------------------</div>
+                  </div>
+                </div>
+
+                {/* Salutation */}
+                <div className="text-center font-bold text-gray-900 mb-6 font-sans text-xs sm:text-sm">
+                  Kính gửi: Ban Thư ký Hội Sinh viên Trường Đại học Đồng Tháp
+                </div>
+
+                {/* Section I */}
+                <div className="space-y-3 font-sans text-gray-800">
+                  <h4 className="font-bold text-[#00529C] text-[11px] uppercase tracking-wide border-l-4 border-[#00529C] pl-2 mb-4">
+                    PHẦN I. THÔNG TIN CÁ NHÂN
+                  </h4>
+                  
+                  <div className="space-y-2.5">
+                    <div>
+                      <span className="text-gray-500 font-medium">1. Họ và tên (viết in hoa):</span>
+                      <span className="ml-2 font-bold text-gray-900 uppercase border-b border-dashed border-gray-300 pb-0.5 inline-block min-w-[200px]">{pendingStudent.name}</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <span className="text-gray-500 font-medium">2. Giới tính:</span>
+                        <span className="ml-2 font-semibold text-gray-900 bg-gray-50 px-2 py-0.5 rounded border border-gray-200">
+                          {pendingStudent.gender || 'Nam'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500 font-medium">Ngày, tháng, năm sinh:</span>
+                        <span className="ml-2 font-semibold text-gray-900 border-b border-dashed border-gray-300 pb-0.5 inline-block">
+                          {(() => {
+                            if (pendingStudent.birthDate && pendingStudent.birthDate.includes('-')) {
+                              const parts = pendingStudent.birthDate.split('-');
+                              if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+                            }
+                            return pendingStudent.birthDate || 'Chưa cập nhật';
+                          })()}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <span className="text-gray-500 font-medium">3. Chi hội:</span>
+                      <span className="ml-2 font-semibold text-gray-900 border-b border-dashed border-gray-300 pb-0.5 inline-block min-w-[300px]">{pendingStudent.subBranch || 'Chưa đăng ký'}</span>
+                    </div>
+
+                    <div>
+                      <span className="text-gray-500 font-medium">4. Khoa:</span>
+                      <span className="ml-2 font-semibold text-gray-900 border-b border-dashed border-gray-300 pb-0.5 inline-block min-w-[300px]">{pendingStudent.faculty}</span>
+                    </div>
+
+                    <div>
+                      <span className="text-gray-500 font-medium">5. Ngành học:</span>
+                      <span className="ml-2 font-semibold text-gray-900 border-b border-dashed border-gray-300 pb-0.5 inline-block min-w-[300px]">{pendingStudent.major || 'Chưa cập nhật'}</span>
+                    </div>
+
+                    <div>
+                      <span className="text-gray-500 font-medium">6. Số căn cước công dân:</span>
+                      <span className="ml-2 font-semibold text-gray-900 border-b border-dashed border-gray-300 pb-0.5 inline-block min-w-[200px]">{pendingStudent.idCard || 'Chưa cập nhật'}</span>
+                    </div>
+
+                    <div>
+                      <span className="text-gray-500 font-medium">7. Địa chỉ thường trú (xã/phường, tỉnh):</span>
+                      <span className="ml-2 font-semibold text-gray-900 border-b border-dashed border-gray-300 pb-0.5 inline-block min-w-[350px]">{pendingStudent.address || 'Chưa cập nhật'}</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <span className="text-gray-500 font-medium">8. Địa chỉ email:</span>
+                        <span className="ml-2 font-semibold text-gray-900 border-b border-dashed border-gray-300 pb-0.5 inline-block">{pendingStudent.email}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500 font-medium">9. Số điện thoại liên hệ:</span>
+                        <span className="ml-2 font-semibold text-gray-900 border-b border-dashed border-gray-300 pb-0.5 inline-block">{pendingStudent.phone}</span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <span className="text-gray-500 font-medium">10. Tên CLB/đội/nhóm đang tham gia (nếu có):</span>
+                      <span className="ml-2 font-semibold text-gray-900 border-b border-dashed border-gray-300 pb-0.5 inline-block min-w-[250px]">{pendingStudent.club || 'Không tham gia'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section II */}
+                <div className="space-y-4 font-sans text-gray-800 mt-8">
+                  <h4 className="font-bold text-emerald-600 text-[11px] uppercase tracking-wide border-l-4 border-emerald-500 pl-2 mb-4">
+                    PHẦN II. ĐẶC ĐIỂM CÁ NHÂN VÀ NGUYỆN VỌNG
+                  </h4>
+
+                  <div className="space-y-4">
+                    <div>
+                      <span className="text-gray-500 font-semibold block mb-2">1. Sở trường và kỹ năng bản thân:</span>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 bg-gray-50 p-4 rounded-xl border border-gray-150">
+                        {AVAILABLE_SKILLS.map((skill) => {
+                          const checked = pendingStudent.skills?.includes(skill);
+                          return (
+                            <div key={skill} className="flex items-center gap-2 text-[10px] font-medium text-gray-700">
+                              <span className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${checked ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-gray-300 bg-white'}`}>
+                                {checked && <Check className="w-2.5 h-2.5 font-bold" />}
+                              </span>
+                              <span>{skill}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                      <div>
+                        <span className="text-gray-500 font-medium block">Kỹ năng khác (ghi rõ):</span>
+                        <span className="font-semibold text-gray-900 border-b border-dashed border-gray-300 pb-0.5 inline-block min-w-[150px]">{pendingStudent.otherSkill || 'Không có'}</span>
+                      </div>
+                      <div>
+                        <span className="text-gray-500 font-medium block">Công cụ AI thành thạo nhất:</span>
+                        <span className="font-bold text-gray-900 border-b border-dashed border-gray-300 pb-0.5 inline-block min-w-[150px]">{pendingStudent.aiTool || 'Không có'}</span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <span className="text-gray-500 font-medium block">Đường dẫn sản phẩm thiết kế/đã làm:</span>
+                      <span className="font-semibold text-blue-600 break-all">{pendingStudent.portfolioUrl || 'Chưa cập nhật'}</span>
+                    </div>
+
+                    <div className="space-y-1">
+                      <span className="text-gray-500 font-semibold block">2. Địa chỉ mạng xã hội cá nhân:</span>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pl-3">
+                        <div>
+                          <span className="text-gray-400 block text-[9px] uppercase font-bold">Facebook</span>
+                          <span className="font-semibold text-gray-900">{pendingStudent.facebook || 'Chưa cập nhật'}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400 block text-[9px] uppercase font-bold">TikTok</span>
+                          <span className="font-semibold text-gray-900">{pendingStudent.tiktok || 'Chưa cập nhật'}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400 block text-[9px] uppercase font-bold">Khác</span>
+                          <span className="font-semibold text-gray-900">{pendingStudent.otherSocial || 'Chưa cập nhật'}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1 pt-2 border-t border-gray-100">
+                      <span className="text-gray-500 font-semibold block">3. Tiến độ tích lũy ngày Công tác xã hội:</span>
+                      <div className="grid grid-cols-2 gap-4 pl-3">
+                        <div>
+                          <span className="text-gray-400 block text-[9px] uppercase font-bold">Đã tích luỹ</span>
+                          <span className="font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded inline-block">{pendingStudent.ctxhAccumulated ?? 0} ngày</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400 block text-[9px] uppercase font-bold">Còn thiếu</span>
+                          <span className="font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded inline-block">{pendingStudent.ctxhMissing ?? 0} ngày</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <span className="text-gray-500 font-semibold block">4. Nguyện vọng / Kỳ vọng cá nhân khi tham gia Đội Công tác xã hội:</span>
+                      <p className="text-gray-700 bg-gray-50 p-3 rounded-xl border border-gray-200 italic leading-relaxed text-[10.5px]">
+                        {pendingStudent.aspiration || 'Không có nguyện vọng đặc biệt.'}
+                      </p>
+                    </div>
+
+                    <div className="pt-6 border-t border-gray-200 text-justify text-[10px] text-gray-600 leading-relaxed">
+                      <p className="font-semibold text-gray-800 uppercase mb-1">CAM KẾT:</p>
+                      Tôi xin cam kết toàn bộ thông tin khai báo trong đơn này là hoàn toàn trung thực, chính xác và chịu hoàn toàn trách nhiệm trước Ban Chấp hành Hội Sinh viên Trường về tính xác thực của các thông tin đã cung cấp.
+                    </div>
+
+                    {/* Date and Sign signature placeholder */}
+                    <div className="grid grid-cols-2 gap-4 pt-8 font-sans">
+                      <div></div>
+                      <div className="text-center space-y-1">
+                        <p className="italic text-gray-500 text-[10px]">Đồng Tháp, ngày {new Date().getDate()} tháng {new Date().getMonth() + 1} năm {new Date().getFullYear()}</p>
+                        <p className="font-bold text-gray-800">NGƯỜI ĐĂNG KÝ</p>
+                        <p className="text-[9px] text-gray-400 italic">(Ký và ghi rõ họ tên)</p>
+                        <div className="h-16"></div>
+                        <p className="font-bold text-gray-900 uppercase tracking-wide text-xs">{pendingStudent.name}</p>
+                      </div>
+                    </div>
+
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+            {/* Footer containing interaction buttons */}
+            <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex flex-col sm:flex-row items-center justify-between gap-4 shrink-0">
+              <span className="text-[11px] text-gray-500 font-semibold text-center sm:text-left">
+                * Vui lòng kiểm tra kỹ thông tin. Nhấn "Xác nhận" để lưu hồ sơ và tải đơn đăng ký Word (.doc) về thiết bị.
+              </span>
+              <div className="flex gap-3 w-full sm:w-auto">
+                <button
+                  onClick={() => setPendingStudent(null)}
+                  className="flex-1 sm:flex-none px-4 py-2.5 bg-white hover:bg-gray-50 border border-gray-300 rounded-xl text-gray-600 font-bold transition-colors cursor-pointer text-center text-xs"
+                >
+                  Quay lại chỉnh sửa
+                </button>
+                <button
+                  onClick={handleConfirmSignUp}
+                  className="flex-1 sm:flex-none px-5 py-2.5 bg-[#00529C] hover:bg-[#00417C] text-white rounded-xl font-bold shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer text-xs"
+                >
+                  <Download className="w-4 h-4" />
+                  Xác nhận & Tải phiếu Word
+                </button>
+              </div>
             </div>
           </div>
         </div>

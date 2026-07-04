@@ -27,6 +27,23 @@ export interface Student {
   totalScore: number; // Điểm rèn luyện tích lũy từ tình nguyện
   status: 'active' | 'locked' | 'pending';
   role: 'student' | 'leader' | 'admin';
+  birthDate?: string; // Ngày sinh
+  gender?: 'Nam' | 'Nữ' | string;
+  subBranch?: string; // Chi hội
+  major?: string; // Ngành học
+  idCard?: string; // Số căn cước công dân
+  address?: string; // Địa chỉ thường trú
+  club?: string; // Tên câu lạc bộ/ đội/ nhóm bạn đang tham gia
+  skills?: string[]; // Danh sách sở trường và kỹ năng bản thân
+  otherSkill?: string; // Kỹ năng khác
+  aiTool?: string; // Tên công cụ AI bạn sử dụng thành thạo nhất
+  portfolioUrl?: string; // Sản phẩm đã thực hiện (link google drive, share link...)
+  facebook?: string;
+  tiktok?: string;
+  otherSocial?: string;
+  ctxhAccumulated?: number; // Số ngày CTXH đã tích lũy
+  ctxhMissing?: number; // Số ngày CTXH còn thiếu
+  aspiration?: string; // Nguyện vọng / Kỳ vọng cá nhân khi tham gia
 }
 
 export interface Registration {

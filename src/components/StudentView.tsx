@@ -71,13 +71,22 @@ export default function StudentView({
         <div className="absolute bottom-0 right-1/3 w-40 h-40 bg-white/5 rounded-full -mb-10 pointer-events-none" />
         
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div>
-            <span className="bg-white/20 text-xs font-semibold px-3 py-1 rounded-full uppercase tracking-wider">
-              Cổng thông tin Đội viên
-            </span>
-            <h2 className="text-2xl md:text-3xl font-display font-bold mt-2">
-              Xin chào, {activeStudent.name}!
-            </h2>
+          <div className="flex items-center gap-4">
+            <div className="shrink-0 bg-white rounded-full shadow-md border border-white/20 w-16 h-16 overflow-hidden flex items-center justify-center">
+             <img 
+    src="https://i.postimg.cc/RFkjyCyr/a.png" 
+    alt="Logo Hội Sinh viên Việt Nam" 
+    className="w-full h-full object-cover rounded-full" 
+  />
+            </div>
+            <div>
+              <span className="bg-white/20 text-xs font-semibold px-3 py-1 rounded-full uppercase tracking-wider">
+                Cổng thông tin Đội viên
+              </span>
+              <h2 className="text-2xl md:text-3xl font-display font-bold mt-2">
+                Xin chào, {activeStudent.name}!
+              </h2>
+            </div>
           </div>
           
           <div className="flex gap-4 md:self-end">
@@ -388,6 +397,20 @@ export default function StudentView({
                   <span className="text-gray-400">Lớp hành chính:</span>
                   <span className="font-medium text-gray-800">{activeStudent.className}</span>
                 </div>
+                {activeStudent.birthDate && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Ngày sinh:</span>
+                    <span className="font-medium text-gray-800">
+                      {(() => {
+                        if (activeStudent.birthDate.includes('-')) {
+                          const parts = activeStudent.birthDate.split('-');
+                          if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+                        }
+                        return activeStudent.birthDate;
+                      })()}
+                    </span>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span className="text-gray-400">Email SV:</span>
                   <span className="font-medium text-gray-800">{activeStudent.email}</span>
@@ -458,9 +481,181 @@ export default function StudentView({
 
           </div>
 
-          {/* Cột phải: Lịch sử hoạt động */}
+          {/* Cột phải: Hồ sơ chi tiết & Lịch sử hoạt động */}
           <div className="lg:col-span-2 space-y-6">
-            <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-xs h-full">
+            {/* Khối Hồ sơ Đội viên chi tiết */}
+            <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-xs">
+              <h3 className="text-base font-semibold text-gray-900 mb-4 flex items-center border-b border-gray-100 pb-3">
+                <User className="w-5 h-5 text-[#00529C] mr-2" />
+                HỒ SƠ ĐỘI VIÊN CHI TIẾT
+              </h3>
+
+              <div className="space-y-6 text-xs">
+                {/* Phần I */}
+                <div className="space-y-3">
+                  <h4 className="font-bold text-[#00529C] text-xs uppercase tracking-wider flex items-center gap-1.5">
+                    <span className="w-1.5 h-3 bg-[#00529C] rounded-full inline-block"></span>
+                    Phần I: Thông tin cá nhân
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 bg-gray-50 p-4 rounded-xl border border-gray-200">
+                    <div>
+                      <span className="text-gray-400 block mb-0.5">Họ và tên:</span>
+                      <span className="font-bold text-gray-800 uppercase">{activeStudent.name}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-400 block mb-0.5">Giới tính:</span>
+                      <span className="font-semibold text-gray-800">{activeStudent.gender || 'Nam'}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-400 block mb-0.5">Ngày sinh:</span>
+                      <span className="font-semibold text-gray-800">
+                        {(() => {
+                          if (activeStudent.birthDate && activeStudent.birthDate.includes('-')) {
+                            const parts = activeStudent.birthDate.split('-');
+                            if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+                          }
+                          return activeStudent.birthDate || 'Chưa cập nhật';
+                        })()}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-gray-400 block mb-0.5">Chi hội:</span>
+                      <span className="font-semibold text-gray-800">{activeStudent.subBranch || 'Chưa cập nhật'}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-400 block mb-0.5">Khoa:</span>
+                      <span className="font-semibold text-gray-800">{activeStudent.faculty}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-400 block mb-0.5">Ngành học:</span>
+                      <span className="font-semibold text-gray-800">{activeStudent.major || 'Chưa cập nhật'}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-400 block mb-0.5">Số CCCD:</span>
+                      <span className="font-semibold text-gray-800">{activeStudent.idCard || 'Chưa cập nhật'}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-400 block mb-0.5">Thường trú:</span>
+                      <span className="font-semibold text-gray-800">{activeStudent.address || 'Chưa cập nhật'}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-400 block mb-0.5">Email liên hệ:</span>
+                      <span className="font-semibold text-gray-800">{activeStudent.email}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-400 block mb-0.5">Số điện thoại:</span>
+                      <span className="font-semibold text-gray-800">{activeStudent.phone}</span>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <span className="text-gray-400 block mb-0.5">CLB/Đội/Nhóm đang tham gia:</span>
+                      <span className="font-semibold text-gray-800">{activeStudent.club || 'Không có'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Phần II */}
+                <div className="space-y-3">
+                  <h4 className="font-bold text-emerald-600 text-xs uppercase tracking-wider flex items-center gap-1.5">
+                    <span className="w-1.5 h-3 bg-emerald-500 rounded-full inline-block"></span>
+                    Phần II: Đặc điểm cá nhân & Nguyện vọng
+                  </h4>
+                  <div className="space-y-4 bg-gray-50 p-4 rounded-xl border border-gray-200">
+                    <div>
+                      <span className="text-gray-400 block mb-1.5">Sở trường & Kỹ năng bản thân:</span>
+                      {activeStudent.skills && activeStudent.skills.length > 0 ? (
+                        <div className="flex flex-wrap gap-1.5">
+                          {activeStudent.skills.map((skill, index) => (
+                            <span key={index} className="bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-0.5 rounded text-[10px] font-semibold">
+                              ✓ {skill}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-gray-400 italic">Chưa đăng ký sở trường nào</span>
+                      )}
+                    </div>
+
+                    {activeStudent.otherSkill && (
+                      <div>
+                        <span className="text-gray-400 block mb-0.5">Kỹ năng khác:</span>
+                        <span className="font-medium text-gray-800">{activeStudent.otherSkill}</span>
+                      </div>
+                    )}
+
+                    <div>
+                      <span className="text-gray-400 block mb-0.5">Công cụ AI sử dụng thành thạo nhất:</span>
+                      <span className="font-bold text-gray-800">{activeStudent.aiTool || 'Chưa cập nhật'}</span>
+                    </div>
+
+                    {activeStudent.portfolioUrl && (
+                      <div>
+                        <span className="text-gray-400 block mb-0.5">Link sản phẩm đã thực hiện:</span>
+                        <a 
+                          href={activeStudent.portfolioUrl.startsWith('http') ? activeStudent.portfolioUrl : `https://${activeStudent.portfolioUrl}`}
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-[#00529C] hover:underline font-semibold break-all"
+                        >
+                          {activeStudent.portfolioUrl}
+                        </a>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-gray-200/60">
+                      <div>
+                        <span className="text-gray-400 block mb-0.5">Facebook:</span>
+                        {activeStudent.facebook ? (
+                          <span className="font-semibold text-gray-800 break-all">{activeStudent.facebook}</span>
+                        ) : (
+                          <span className="text-gray-400 italic">Chưa cập nhật</span>
+                        )}
+                      </div>
+                      <div>
+                        <span className="text-gray-400 block mb-0.5">TikTok:</span>
+                        {activeStudent.tiktok ? (
+                          <span className="font-semibold text-gray-800 break-all">{activeStudent.tiktok}</span>
+                        ) : (
+                          <span className="text-gray-400 italic">Chưa cập nhật</span>
+                        )}
+                      </div>
+                      <div>
+                        <span className="text-gray-400 block mb-0.5">MXH khác:</span>
+                        {activeStudent.otherSocial ? (
+                          <span className="font-semibold text-gray-800 break-all">{activeStudent.otherSocial}</span>
+                        ) : (
+                          <span className="text-gray-400 italic">Chưa cập nhật</span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4 pt-2 border-t border-gray-200/60">
+                      <div>
+                        <span className="text-gray-400 block mb-0.5">Số ngày CTXH đã tích lũy:</span>
+                        <span className="font-bold text-emerald-600 bg-emerald-50 px-2.5 py-0.5 rounded inline-block">
+                          {activeStudent.ctxhAccumulated ?? 0} ngày
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-gray-400 block mb-0.5">Số ngày CTXH còn thiếu:</span>
+                        <span className="font-bold text-red-600 bg-red-50 px-2.5 py-0.5 rounded inline-block">
+                          {activeStudent.ctxhMissing ?? 0} ngày
+                        </span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <span className="text-gray-400 block mb-0.5">Nguyện vọng / Kỳ vọng cá nhân:</span>
+                      <p className="text-gray-700 bg-white p-2.5 rounded-lg border border-gray-150 italic leading-relaxed whitespace-pre-wrap">
+                        {activeStudent.aspiration || 'Không có yêu cầu đặc biệt'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Khối Lịch sử hoạt động */}
+            <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-xs">
               <h3 className="text-base font-semibold text-gray-900 mb-4 flex items-center">
                 <FileText className="w-5 h-5 text-[#00529C] mr-2" />
                 Lịch sử hoạt động
