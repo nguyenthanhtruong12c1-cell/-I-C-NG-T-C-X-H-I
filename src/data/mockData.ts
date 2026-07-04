@@ -28,8 +28,8 @@ export const initialStudents: Student[] = [
     portfolioUrl: 'https://drive.google.com/file/d/sample',
     facebook: 'https://facebook.com/nguyenvana',
     tiktok: 'https://tiktok.com/@nguyenvana',
-    ctxhAccumulated: 5,
-    ctxhMissing: 10,
+    ctxhAccumulated: 5.5,
+    ctxhMissing: 9.5,
     aspiration: 'Mong muốn được đóng góp tích cực cho các hoạt động tình nguyện của Đội và rèn luyện kỹ năng mềm.'
   }
 ];

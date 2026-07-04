@@ -538,7 +538,7 @@ export default function App() {
     
     // Auto fill login ID and show success
     setLoginStudentId(pendingStudent.studentId);
-    setRegSuccess('Đăng ký Đội viên thành công! Hồ sơ của bạn đã được chuyển đến Ban điều hành (Admin) để phê duyệt. Vui lòng liên hệ Đoàn - Hội khoa để được duyệt sớm. File phiếu đăng ký Word (.doc) của bạn đã được tải xuống tự động.');
+    setRegSuccess('Đăng ký Đội viên thành công! Hồ sơ của bạn đã được chuyển đến Ban điều hành (Admin) để phê duyệt. File phiếu đăng ký Word (.doc) của bạn đã được tải xuống tự động.');
     setShowSignUp(false);
 
     // Trigger word download
@@ -609,8 +609,8 @@ export default function App() {
       facebook: regFacebook.trim(),
       tiktok: regTikTok.trim(),
       otherSocial: regOtherSocial.trim(),
-      ctxhAccumulated: regCtxhAccumulated ? parseFloat(regCtxhAccumulated) : 0,
-      ctxhMissing: regCtxhMissing ? parseFloat(regCtxhMissing) : 0,
+      ctxhAccumulated: regCtxhAccumulated ? parseFloat(String(regCtxhAccumulated).replace(',', '.')) : 0,
+      ctxhMissing: regCtxhMissing ? parseFloat(String(regCtxhMissing).replace(',', '.')) : 0,
       aspiration: regAspiration.trim(),
       totalHours: 0,
       totalScore: 0,
@@ -1165,7 +1165,7 @@ export default function App() {
                           <input
                             type="text"
                             required
-                            placeholder="Ví dụ: 030024005123"
+                            placeholder="Nhập số CCCD"
                             value={regIdCard}
                             onChange={(e) => setRegIdCard(e.target.value.replace(/[^0-9]/g, ''))}
                             className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none"
@@ -1214,7 +1214,7 @@ export default function App() {
                         <label className="text-gray-600 font-semibold">10. Tên câu lạc bộ/ đội/ nhóm bạn đang tham gia (nếu có)</label>
                         <input
                           type="text"
-                          placeholder="Ví dụ: CLB Sách và Hành động"
+                          placeholder="Nhập tên CLB/đội/nhóm đang tham gia"
                           value={regClub}
                           onChange={(e) => setRegClub(e.target.value)}
                           className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none"
@@ -1356,22 +1356,32 @@ export default function App() {
                           <div className="space-y-1">
                             <span className="text-[10px] text-gray-400 font-bold uppercase">Số ngày CTXH đã tích lũy:</span>
                             <input
-                              type="number"
-                              min="0"
-                              placeholder="Ví dụ: 5"
+                              type="text"
+                              inputMode="decimal"
+                              placeholder="Nhập số ngày"
                               value={regCtxhAccumulated}
-                              onChange={(e) => setRegCtxhAccumulated(e.target.value)}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                if (/^[0-9.,]*$/.test(val)) {
+                                  setRegCtxhAccumulated(val);
+                                }
+                              }}
                               className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none text-[11px]"
                             />
                           </div>
                           <div className="space-y-1">
                             <span className="text-[10px] text-gray-400 font-bold uppercase">Số ngày CTXH còn thiếu:</span>
                             <input
-                              type="number"
-                              min="0"
-                              placeholder="Ví dụ: 10"
+                              type="text"
+                              inputMode="decimal"
+                              placeholder="Nhập số ngày"
                               value={regCtxhMissing}
-                              onChange={(e) => setRegCtxhMissing(e.target.value)}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                if (/^[0-9.,]*$/.test(val)) {
+                                  setRegCtxhMissing(val);
+                                }
+                              }}
                               className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none text-[11px]"
                             />
                           </div>
