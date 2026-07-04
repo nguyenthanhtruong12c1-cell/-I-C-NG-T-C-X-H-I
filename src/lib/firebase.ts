@@ -1,29 +1,25 @@
 import { initializeApp } from 'firebase/app';
 import { initializeFirestore } from 'firebase/firestore';
-import { getAnalytics } from 'firebase/analytics'; // 👈 Thêm import này vì cấu hình mới của bạn có Analytics
 
-// ĐÃ THAY THẾ: Cấu hình mới chính xác từ dự án ctxh-ea037 của bạn
+// Cấu hình Firebase chính thức được cấp bởi AI Studio
 const firebaseConfig = {
-  apiKey: "AIzaSyDBy_sZJiw2Kd6oi8Piuu8epc7qhlPM0NU",
-  authDomain: "ctxh-ea037.firebaseapp.com",
-  projectId: "ctxh-ea037",
-  storageBucket: "ctxh-ea037.firebasestorage.app",
-  messagingSenderId: "687695716070",
-  appId: "1:687695716070:web:7f8b3756dd2e059263e527",
-  measurementId: "G-VSTV4HYNKS" 
+  apiKey: "AIzaSyAlu4pVWAd8lh-yD3ZytdXBEfb3ElI8nuc",
+  authDomain: "angular-apricot-nxhgq.firebaseapp.com",
+  projectId: "angular-apricot-nxhgq",
+  storageBucket: "angular-apricot-nxhgq.firebasestorage.app",
+  messagingSenderId: "353690584670",
+  appId: "1:353690584670:web:c54762f2783e832e5156cf"
 };
+
+const databaseId = "ai-studio-qunltnhnguyntrng-597232d4-afd4-4c45-8ada-ef4e17fc6aea";
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
-// ĐÃ THAY THẾ: Khởi tạo Firestore về cơ sở dữ liệu mặc định (default) 
-// để tránh lỗi kết nối nếu bạn không tạo cụ thể ID database này trên Console.
+// Initialize Firestore with the custom database ID
 export const db = initializeFirestore(app, {
-  ignoreUndefinedProperties: true 
-});
-
-// Khởi tạo Analytics cho cấu hình mới
-export const analytics = getAnalytics(app);
+  ignoreUndefinedProperties: true // Crucial to prevent errors if we save objects with undefined fields
+}, databaseId);
 
 export enum OperationType {
   CREATE = 'create',

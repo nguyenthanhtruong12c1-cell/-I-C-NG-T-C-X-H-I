@@ -345,7 +345,7 @@ export default function App() {
       }
     } else {
       // Admin Login Check
-      if (loginAdminUser === 'admin' && loginAdminPass === 'admin') {
+      if (loginAdminUser === 'admin' && loginAdminPass === 'admin123') {
         const adminUser = {
           id: 'admin-001',
           name: 'Hội Sinh viên Trường Đại học Đồng Tháp',
@@ -1163,7 +1163,7 @@ export default function App() {
                             <input
                               type="password"
                               required
-                              placeholder="Nhập 'admin'..."
+                              placeholder="Nhập 'admin123'..."
                               value={loginAdminPass}
                               onChange={(e) => setLoginAdminPass(e.target.value)}
                               className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none"

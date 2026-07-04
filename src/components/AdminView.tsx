@@ -89,11 +89,11 @@ export default function AdminView({
   const [newCampTitle, setNewCampTitle] = useState('');
   const [newCampDesc, setNewCampDesc] = useState('');
   const [newCampDept, setNewCampDept] = useState<'Đoàn Thanh niên' | 'Hội Sinh viên'>('Đoàn Thanh niên');
-  const [newCampDate, setNewCampDate] = useState('2026-07-15 đến 2026-07-25');
-  const [newCampType, setNewCampType] = useState('Chiến dịch hè');
-  const [newCampLocation, setNewCampLocation] = useState('Trực tiếp tại trường');
-  const [newCampSlots, setNewCampSlots] = useState(50);
-  const [newCampScore, setNewCampScore] = useState<number | string>(1.5);
+  const [newCampDate, setNewCampDate] = useState('');
+  const [newCampType, setNewCampType] = useState('');
+  const [newCampLocation, setNewCampLocation] = useState('');
+  const [newCampSlots, setNewCampSlots] = useState<number | string>('');
+  const [newCampScore, setNewCampScore] = useState<number | string>('');
   const [newCampScoreType, setNewCampScoreType] = useState<'Ngày' | 'Giờ'>('Ngày');
 
   // Attendance and Performance grading states
@@ -147,8 +147,11 @@ export default function AdminView({
     // Reset form & close
     setNewCampTitle('');
     setNewCampDesc('');
-    setNewCampSlots(50);
-    setNewCampScore(1.5);
+    setNewCampSlots('');
+    setNewCampScore('');
+    setNewCampDate('');
+    setNewCampType('');
+    setNewCampLocation('');
     setShowCreateModal(false);
   };
 
@@ -991,7 +994,7 @@ export default function AdminView({
                 <input
                   type="text"
                   required
-                  placeholder="Ví dụ: Tập huấn kỹ năng số 2026..."
+                  placeholder="Nhập tên hoạt động/chiến dịch..."
                   value={newCampTitle}
                   onChange={(e) => setNewCampTitle(e.target.value)}
                   className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#00529C]/15"
@@ -1017,7 +1020,7 @@ export default function AdminView({
                   <input
                     type="text"
                     required
-                    placeholder="Ví dụ: Tập huấn, Tiếp sức..."
+                    placeholder="Nhập thể loại..."
                     value={newCampType}
                     onChange={(e) => setNewCampType(e.target.value)}
                     className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none"
@@ -1031,7 +1034,7 @@ export default function AdminView({
                 <textarea
                   required
                   rows={3}
-                  placeholder="Mô tả cụ thể yêu cầu của Đoàn/Hội khi tham gia..."
+                  placeholder="Nhập mô tả cụ thể..."
                   value={newCampDesc}
                   onChange={(e) => setNewCampDesc(e.target.value)}
                   className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#00529C]/15"
@@ -1045,7 +1048,7 @@ export default function AdminView({
                   <input
                     type="text"
                     required
-                    placeholder="Địa điểm hoặc Online"
+                    placeholder="Nhập địa điểm..."
                     value={newCampLocation}
                     onChange={(e) => setNewCampLocation(e.target.value)}
                     className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none"
@@ -1053,11 +1056,11 @@ export default function AdminView({
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-gray-500 font-semibold">Cài đặt thời gian (Date Picker) *</label>
+                  <label className="text-gray-500 font-semibold">Thời gian *</label>
                   <input
                     type="text"
                     required
-                    placeholder="Ví dụ: 2026-07-15 đến 2026-07-20"
+                    placeholder="Nhập thời gian..."
                     value={newCampDate}
                     onChange={(e) => setNewCampDate(e.target.value)}
                     className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none"
@@ -1074,7 +1077,7 @@ export default function AdminView({
                     required
                     min={1}
                     value={newCampSlots}
-                    onChange={(e) => setNewCampSlots(Number(e.target.value))}
+                    onChange={(e) => setNewCampSlots(e.target.value === '' ? '' : Number(e.target.value))}
                     className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none"
                   />
                 </div>
@@ -1086,7 +1089,7 @@ export default function AdminView({
                     required
                     step="any"
                     min={0}
-                    placeholder="Ví dụ: 1.5"
+                    placeholder="Nhập số ngày..."
                     value={newCampScore}
                     onChange={(e) => setNewCampScore(e.target.value)}
                     className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none"
