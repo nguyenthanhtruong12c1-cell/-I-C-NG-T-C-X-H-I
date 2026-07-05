@@ -32,7 +32,10 @@ import {
   AlertCircle,
   FileText,
   X,
-  Download
+  Download,
+  QrCode,
+  Clock,
+  BookOpen
 } from 'lucide-react';
 
 const STORAGE_KEY_CAMPAIGNS = 'vol_portal_campaigns';
@@ -133,6 +136,13 @@ export default function App() {
     message: string;
   } | null>(null);
 
+  // Campaign ID detected from scanned QR Code Link
+  const [qrCampaignId, setQrCampaignId] = useState<string | null>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const action = params.get('action');
+    return action === 'register' ? params.get('campaignId') : null;
+  });
+
   // Firestore Real-time Synchronization
   useEffect(() => {
     const unsubscribeCampaigns = onSnapshot(collection(db, 'campaigns'), (snapshot) => {
@@ -206,101 +216,16 @@ export default function App() {
     }
   }, [currentUser, role]);
 
-  // Handle registration via URL scan (QR Code)
+  // Handle registration via URL scan (QR Code) - Set qrCampaignId when URL contains register action
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const action = params.get('action');
     const campaignId = params.get('campaignId');
 
     if (action === 'register' && campaignId) {
-      // Find the campaign
-      const camp = campaigns.find(c => c.id === campaignId);
-      if (!camp) {
-        setAlertModal({
-          title: 'Lỗi quét mã QR',
-          message: 'Không tìm thấy thông tin hoạt động này trong hệ thống!'
-        });
-        window.history.replaceState({}, document.title, window.location.pathname);
-        return;
-      }
-
-      // Check if student is logged in
-      if (!currentUser || role !== 'student') {
-        setAlertModal({
-          title: 'Yêu cầu đăng nhập',
-          message: `Bạn đã quét mã đăng ký hoạt động: "${camp.title}". Vui lòng ĐĂNG NHẬP (hoặc ĐĂNG KÝ) tài khoản Đội viên để hệ thống tiến hành ghi nhận đăng ký của bạn!`
-        });
-        window.history.replaceState({}, document.title, window.location.pathname);
-        return;
-      }
-
-      // If logged in, proceed to register
-      const currentStudent = currentUser as Student;
-      const alreadyRegistered = registrations.some(r => r.studentId === currentStudent.id && r.campaignId === campaignId);
-
-      if (alreadyRegistered) {
-        setAlertModal({
-          title: 'Đăng ký đã tồn tại',
-          message: `Bạn đã đăng ký hoạt động "${camp.title}" trước đó rồi!`
-        });
-      } else if (camp.status === 'paused') {
-        setAlertModal({
-          title: 'Hoạt động đang tạm dừng',
-          message: `Hoạt động "${camp.title}" hiện đang tạm dừng nhận đăng ký!`
-        });
-      } else if (camp.status === 'completed') {
-        setAlertModal({
-          title: 'Hoạt động đã kết thúc',
-          message: `Hoạt động "${camp.title}" đã kết thúc hoặc hoàn thành!`
-        });
-      } else if ((camp.slotsRegistered || 0) >= camp.slotsTotal) {
-        setAlertModal({
-          title: 'Đầy chỉ tiêu',
-          message: `Hoạt động "${camp.title}" đã đạt đủ chỉ tiêu suất đăng ký tối đa!`
-        });
-      } else {
-        // Register successfully!
-        const newRegistration: Registration = {
-          id: `reg-${Date.now()}`,
-          studentId: currentStudent.id,
-          studentName: currentStudent.name,
-          studentClass: currentStudent.className,
-          studentFaculty: currentStudent.faculty,
-          campaignId: campaignId,
-          campaignTitle: camp.title,
-          registeredAt: new Date().toISOString().slice(0, 16).replace('T', ' '),
-          status: 'pending',
-          attendanceStatus: 'none'
-        };
-
-        const registerQR = async () => {
-          try {
-            const batch = writeBatch(db);
-            batch.set(doc(db, 'registrations', newRegistration.id), newRegistration);
-            batch.update(doc(db, 'campaigns', campaignId), {
-              slotsRegistered: (camp.slotsRegistered || 0) + 1
-            });
-            await batch.commit();
-
-            setAlertModal({
-              title: 'Đăng ký thành công',
-              message: `Chúc mừng bạn! Bạn đã đăng ký tham gia hoạt động "${camp.title}" thành công qua mã QR.`
-            });
-          } catch (error) {
-            console.error('Error QR registering:', error);
-            setAlertModal({
-              title: 'Lỗi đăng ký',
-              message: 'Có lỗi xảy ra khi xử lý đăng ký của bạn. Vui lòng thử lại!'
-            });
-          }
-        };
-        registerQR();
-      }
-
-      // Clear search params from URL so it doesn't trigger again on subsequent re-renders
-      window.history.replaceState({}, document.title, window.location.pathname);
+      setQrCampaignId(campaignId);
     }
-  }, [currentUser, role, campaigns, registrations]);
+  }, []);
 
   // Active student reference computed dynamically from the students array to prevent stale data
   const activeStudent = (currentUser && role === 'student') 
@@ -605,11 +530,8 @@ export default function App() {
       
       // Auto fill login ID and show success
       setLoginStudentId(pendingStudent.studentId);
-      setRegSuccess('Đăng ký Đội viên thành công! Hồ sơ của bạn đã được chuyển đến Ban điều hành (Admin) để phê duyệt. File phiếu đăng ký Word (.doc) của bạn đã được tải xuống tự động.');
+      setRegSuccess('Đăng ký Đội viên thành công! Hồ sơ của bạn đã được chuyển đến Ban điều hành (Admin) để phê duyệt.');
       setShowSignUp(false);
-
-      // Trigger word download
-      handleDownloadDocx(pendingStudent);
 
       // Reset states
       setPendingStudent(null);
@@ -1151,7 +1073,7 @@ export default function App() {
                             <input
                               type="text"
                               required
-                              placeholder="Nhập 'admin'..."
+                              placeholder=""
                               value={loginAdminUser}
                               onChange={(e) => setLoginAdminUser(e.target.value)}
                               className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none"
@@ -1163,7 +1085,7 @@ export default function App() {
                             <input
                               type="password"
                               required
-                              placeholder="Nhập 'admin123'..."
+                              placeholder=""
                               value={loginAdminPass}
                               onChange={(e) => setLoginAdminPass(e.target.value)}
                               className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none"
@@ -1185,7 +1107,7 @@ export default function App() {
                   </>
                 ) : (
                   /* SIGN UP FORM (Dynamic creation with expanded fields) */
-                  <form onSubmit={handleSignUp} className="space-y-6 text-xs text-left">
+                  <form onSubmit={handleSignUp} className="space-y-6 text-xs text-left" id="register-container">
                     {/* PART I: PERSONAL INFO */}
                     <div className="space-y-4 border-b border-gray-100 pb-5">
                       <h4 className="font-bold text-[#00529C] text-sm border-l-4 border-[#00529C] pl-2 uppercase tracking-wide">
@@ -1669,6 +1591,242 @@ export default function App() {
         </div>
       )}
 
+      {/* MODAL: QR CAMPAIGN DETAILS */}
+      {qrCampaignId && (
+        (() => {
+          const camp = campaigns.find(c => c.id === qrCampaignId);
+          if (!camp) return null;
+          const percentFull = Math.min(100, Math.round(((camp.slotsRegistered || 0) / camp.slotsTotal) * 100));
+
+          const handleClose = () => {
+            setQrCampaignId(null);
+            // Clear URL search params
+            window.history.replaceState({}, document.title, window.location.pathname);
+          };
+
+          return (
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 overflow-y-auto">
+              <div className="bg-white rounded-3xl max-w-xl w-full shadow-2xl border border-gray-100 overflow-hidden flex flex-col my-8 animate-fade-in text-xs">
+                {/* Header */}
+                <div className="bg-gradient-to-r from-[#00529C] to-[#00AEEF] px-6 py-4.5 text-white flex items-center justify-between shrink-0">
+                  <div className="flex items-center gap-2">
+                    <QrCode className="w-5 h-5 text-white" />
+                    <h3 className="font-display font-bold text-sm">Thông tin Chiến dịch (Mã QR)</h3>
+                  </div>
+                  <button
+                    onClick={handleClose}
+                    className="text-white/80 hover:text-white p-1.5 hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Content */}
+                <div className="p-6 overflow-y-auto space-y-5 max-h-[60vh]">
+                  {/* Image banner */}
+                  {camp.imageUrl ? (
+                    <div className="relative h-48 w-full rounded-2xl overflow-hidden bg-gray-100 border border-gray-100 shadow-xs">
+                      <img 
+                        src={camp.imageUrl} 
+                        alt={camp.title}
+                        referrerPolicy="no-referrer"
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  ) : (
+                    <div className="w-full h-24 bg-blue-50/50 rounded-2xl flex items-center justify-center border border-dashed border-blue-200">
+                      <BookOpen className="w-8 h-8 text-[#00529C]/30" />
+                    </div>
+                  )}
+
+                  {/* Badges */}
+                  <div className="flex flex-wrap gap-2.5 items-center">
+                    <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider text-white ${
+                      camp.department === 'Đoàn Thanh niên' ? 'bg-[#00529C]' : 'bg-[#00AEEF]'
+                    }`}>
+                      {camp.department}
+                    </span>
+                    <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded-md font-semibold text-[10px]">
+                      {camp.type}
+                    </span>
+                    <span className="flex items-center font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg text-[10px]">
+                      <Award className="w-3.5 h-3.5 mr-1" />
+                      +{camp.score} {camp.scoreType}
+                    </span>
+                  </div>
+
+                  {/* Title & Description */}
+                  <div className="space-y-2">
+                    <h3 className="text-base sm:text-lg font-bold text-gray-900 leading-snug">
+                      {camp.title}
+                    </h3>
+                    <p className="text-gray-600 leading-relaxed text-justify whitespace-pre-wrap">
+                      {camp.description}
+                    </p>
+                  </div>
+
+                  {/* Information Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 border-t border-gray-100">
+                    <div className="flex items-center gap-2.5 bg-gray-50/80 p-3 rounded-xl border border-gray-100">
+                      <Calendar className="w-4 h-4 text-[#00529C] shrink-0" />
+                      <div>
+                        <span className="text-[10px] text-gray-400 block font-bold uppercase">Thời gian tổ chức</span>
+                        <span className="font-semibold text-gray-700">{camp.date}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2.5 bg-gray-50/80 p-3 rounded-xl border border-gray-100">
+                      <MapPin className="w-4 h-4 text-[#00529C] shrink-0" />
+                      <div>
+                        <span className="text-[10px] text-gray-400 block font-bold uppercase">Địa điểm diễn ra</span>
+                        <span className="font-semibold text-gray-700 truncate block max-w-[200px]">{camp.location}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Progress Indicator */}
+                  <div className="space-y-2 pt-1">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-gray-500 font-medium">Sĩ số đăng ký dự kiến:</span>
+                      <span className="font-bold text-gray-800">
+                        {camp.slotsRegistered}/{camp.slotsTotal} suất (đầy {percentFull}%)
+                      </span>
+                    </div>
+                    <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                      <div 
+                        className={`h-full transition-all duration-300 ${
+                          percentFull >= 100 
+                            ? 'bg-red-500' 
+                            : percentFull >= 80 
+                            ? 'bg-amber-500' 
+                            : 'bg-[#00529C]'
+                        }`}
+                        style={{ width: `${percentFull}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Footer Action */}
+                <div className="px-6 py-4.5 bg-gray-50 border-t border-gray-100 shrink-0">
+                  {(() => {
+                    if (!currentUser) {
+                      return (
+                        <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4 text-center space-y-3">
+                          <p className="text-[11px] text-blue-800 font-semibold leading-relaxed">
+                            Mã QR yêu cầu đăng nhập: Vui lòng <strong>Đăng nhập</strong> hoặc <strong>Đăng ký tài khoản Đội viên mới</strong> ở bên dưới để đăng ký tham gia hoạt động này!
+                          </p>
+                          <div className="flex gap-2.5 justify-center">
+                            <button
+                              onClick={() => {
+                                handleClose();
+                                setShowSignUp(false);
+                                setTimeout(() => {
+                                  const el = document.getElementById('login-student-id');
+                                  if (el) el.scrollIntoView({ behavior: 'smooth' });
+                                }, 100);
+                              }}
+                              className="px-4 py-2 bg-[#00529C] hover:bg-[#00417C] text-white rounded-xl text-[10px] font-extrabold uppercase tracking-wide transition-all shadow-sm cursor-pointer"
+                            >
+                              Đăng nhập ngay
+                            </button>
+                            <button
+                              onClick={() => {
+                                handleClose();
+                                setShowSignUp(true);
+                                setTimeout(() => {
+                                  const el = document.getElementById('register-container');
+                                  if (el) el.scrollIntoView({ behavior: 'smooth' });
+                                }, 100);
+                              }}
+                              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[10px] font-extrabold uppercase tracking-wide transition-all shadow-sm cursor-pointer"
+                            >
+                              Đăng ký tài khoản mới
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    if (role === 'admin') {
+                      return (
+                        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-center text-amber-800 font-semibold">
+                          Bạn đang đăng nhập bằng tài khoản Quản trị viên (Admin). Vui lòng sử dụng tài khoản Đội viên (Sinh viên) để đăng ký tham gia hoạt động này!
+                        </div>
+                      );
+                    }
+
+                    // Student role
+                    const currentStudent = currentUser as Student;
+                    const studentReg = registrations.find(r => r.studentId === currentStudent.id && r.campaignId === camp.id);
+                    if (studentReg) {
+                      let statusText = 'Chờ phê duyệt';
+                      let statusStyle = 'bg-amber-100 text-amber-800 border-amber-200';
+                      if (studentReg.status === 'approved') {
+                        statusText = 'Đã phê duyệt (Sẽ tham gia)';
+                        statusStyle = 'bg-emerald-100 text-emerald-800 border-emerald-200';
+                      } else if (studentReg.status === 'completed') {
+                        statusText = 'Đã hoàn thành xuất sắc';
+                        statusStyle = 'bg-blue-100 text-blue-800 border-blue-200';
+                      } else if (studentReg.status === 'rejected') {
+                        statusText = 'Đã bị từ chối';
+                        statusStyle = 'bg-red-100 text-red-800 border-red-200';
+                      }
+
+                      return (
+                        <div className={`border rounded-2xl p-3.5 text-center font-bold text-xs ${statusStyle}`}>
+                          Hệ thống ghi nhận: Bạn đã đăng ký hoạt động này ({statusText})
+                        </div>
+                      );
+                    }
+
+                    if (camp.status === 'paused') {
+                      return (
+                        <div className="bg-orange-50 border border-orange-200 rounded-2xl p-3.5 text-center text-orange-700 font-bold">
+                          Hoạt động này hiện đang tạm dừng nhận đăng ký từ Đội viên!
+                        </div>
+                      );
+                    }
+
+                    if (camp.status === 'completed') {
+                      return (
+                        <div className="bg-gray-50 border border-gray-200 rounded-2xl p-3.5 text-center text-gray-500 font-bold">
+                          Hoạt động này đã kết thúc hoặc hoàn thành!
+                        </div>
+                      );
+                    }
+
+                    if (camp.slotsRegistered >= camp.slotsTotal) {
+                      return (
+                        <div className="bg-red-50 border border-red-200 rounded-2xl p-3.5 text-center text-red-700 font-bold">
+                          Đã đủ chỉ tiêu số lượng suất đăng ký tối đa cho hoạt động này!
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <button
+                        onClick={async () => {
+                          await handleRegisterCampaign(camp.id);
+                          setAlertModal({
+                            title: 'Đăng ký thành công',
+                            message: `Chúc mừng bạn! Bạn đã đăng ký tham gia hoạt động "${camp.title}" thành công.`
+                          });
+                          handleClose();
+                        }}
+                        className="w-full py-3 bg-[#00529C] hover:bg-[#00417C] text-white rounded-2xl font-extrabold text-xs shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <Check className="w-4 h-4" />
+                        ĐĂNG KÝ THAM GIA HOẠT ĐỘNG NGAY
+                      </button>
+                    );
+                  })()}
+                </div>
+              </div>
+            </div>
+          );
+        })()
+      )}
+
       {/* MODAL: DOCUMENT PREVIEW */}
       {pendingStudent && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-50 p-4 overflow-y-auto">
@@ -1688,12 +1846,21 @@ export default function App() {
                   </p>
                 </div>
               </div>
-              <button 
-                onClick={() => setPendingStudent(null)}
-                className="text-white/80 hover:text-white p-1.5 hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleDownloadDocx(pendingStudent)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-[#00529C] hover:bg-blue-50 active:scale-98 rounded-xl text-xs font-bold shadow-md transition-all cursor-pointer border border-transparent"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Tải biểu mẫu (.doc)</span>
+                </button>
+                <button 
+                  onClick={() => setPendingStudent(null)}
+                  className="text-white/80 hover:text-white p-1.5 hover:bg-white/10 rounded-lg transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             {/* Document Content Container (Simulating A4 paper) */}
@@ -1918,7 +2085,7 @@ export default function App() {
             {/* Footer containing interaction buttons */}
             <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex flex-col sm:flex-row items-center justify-between gap-4 shrink-0">
               <span className="text-[11px] text-gray-500 font-semibold text-center sm:text-left">
-                * Vui lòng kiểm tra kỹ thông tin. Nhấn "Xác nhận" để lưu hồ sơ và tải đơn đăng ký Word (.doc) về thiết bị.
+                * Vui lòng kiểm tra kỹ thông tin. Nhấn "Xác nhận đăng ký" để gửi hồ sơ đến Ban điều hành (Admin).
               </span>
               <div className="flex gap-3 w-full sm:w-auto">
                 <button
@@ -1929,10 +2096,10 @@ export default function App() {
                 </button>
                 <button
                   onClick={handleConfirmSignUp}
-                  className="flex-1 sm:flex-none px-5 py-2.5 bg-[#00529C] hover:bg-[#00417C] text-white rounded-xl font-bold shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer text-xs"
+                  className="flex-1 sm:flex-none px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-1.5 cursor-pointer text-xs"
                 >
-                  <Download className="w-4 h-4" />
-                  Xác nhận & Tải phiếu Word
+                  <Check className="w-4 h-4" />
+                  Xác nhận đăng ký
                 </button>
               </div>
             </div>
