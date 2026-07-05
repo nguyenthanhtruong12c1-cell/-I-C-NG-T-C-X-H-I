@@ -96,6 +96,7 @@ export default function AdminView({
   const [newCampSlots, setNewCampSlots] = useState<number | string>('');
   const [newCampScore, setNewCampScore] = useState<number | string>('');
   const [newCampScoreType, setNewCampScoreType] = useState<'Ngày' | 'Giờ'>('Ngày');
+  const [newCampFormat, setNewCampFormat] = useState<'Trực tiếp' | 'Trực tuyến'>('Trực tiếp');
 
   // Attendance and Performance grading states
   const [selectedEvaluationReg, setSelectedEvaluationReg] = useState<Registration | null>(null);
@@ -147,7 +148,8 @@ export default function AdminView({
       scoreType: newCampScoreType,
       type: newCampType,
       location: newCampLocation,
-      skillsRequired: ['Nhiệt huyết', 'Đúng giờ']
+      skillsRequired: ['Nhiệt huyết', 'Đúng giờ'],
+      format: newCampFormat
     });
     // Reset form & close
     setNewCampTitle('');
@@ -157,6 +159,7 @@ export default function AdminView({
     setNewCampDate('');
     setNewCampType('');
     setNewCampLocation('');
+    setNewCampFormat('Trực tiếp');
     setShowCreateModal(false);
   };
 
@@ -829,11 +832,22 @@ export default function AdminView({
                 <div key={camp.id} className="p-4 border border-gray-100 rounded-xl hover:border-gray-200 transition-all space-y-3">
                   <div className="flex justify-between items-start">
                     <div>
-                      <span className={`px-2 py-0.5 rounded-md text-[9px] font-extrabold uppercase text-white ${
-                        camp.department === 'Đoàn Thanh niên' ? 'bg-[#00529C]' : 'bg-[#00AEEF]'
-                      }`}>
-                        {camp.department}
-                      </span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className={`px-2 py-0.5 rounded-md text-[9px] font-extrabold uppercase text-white ${
+                          camp.department === 'Đoàn Thanh niên' ? 'bg-[#00529C]' : 'bg-[#00AEEF]'
+                        }`}>
+                          {camp.department}
+                        </span>
+                        {camp.format && (
+                          <span className={`px-2 py-0.5 rounded-md text-[9px] font-extrabold uppercase ${
+                            camp.format === 'Trực tiếp'
+                              ? 'bg-indigo-50 text-indigo-700 border border-indigo-100'
+                              : 'bg-purple-50 text-purple-700 border border-purple-100'
+                          }`}>
+                            {camp.format}
+                          </span>
+                        )}
+                      </div>
                       <h4 className="font-semibold text-gray-900 text-sm mt-1.5">{camp.title}</h4>
                     </div>
                     
@@ -1044,8 +1058,8 @@ export default function AdminView({
                 />
               </div>
 
-              {/* Đơn vị tổ chức & Loại hình */}
-              <div className="grid grid-cols-2 gap-4">
+              {/* Đơn vị tổ chức & Loại hình & Hình thức */}
+              <div className="grid grid-cols-3 gap-3">
                 <div className="space-y-1">
                   <label className="text-gray-500 font-semibold">Đơn vị chủ quản *</label>
                   <select
@@ -1066,8 +1080,20 @@ export default function AdminView({
                     placeholder="Nhập thể loại..."
                     value={newCampType}
                     onChange={(e) => setNewCampType(e.target.value)}
-                    className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none"
+                    className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#00529C]/15"
                   />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-gray-500 font-semibold">Hình thức hoạt động *</label>
+                  <select
+                    value={newCampFormat}
+                    onChange={(e: any) => setNewCampFormat(e.target.value)}
+                    className="w-full p-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#00529C]/15 font-semibold text-gray-700"
+                  >
+                    <option value="Trực tiếp">Trực tiếp</option>
+                    <option value="Trực tuyến">Trực tuyến</option>
+                  </select>
                 </div>
               </div>
 

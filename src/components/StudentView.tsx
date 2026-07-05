@@ -41,6 +41,7 @@ export default function StudentView({
   const [searchTerm, setSearchTerm] = useState('');
   const [filterOrganizer, setFilterOrganizer] = useState<'all' | 'Đoàn Thanh niên' | 'Hội Sinh viên'>('all');
   const [filterStatus, setFilterStatus] = useState<'all' | 'open' | 'closing_soon' | 'completed'>('all');
+  const [filterFormat, setFilterFormat] = useState<'all' | 'Trực tiếp' | 'Trực tuyến'>('all');
   
 
 
@@ -51,7 +52,8 @@ export default function StudentView({
                           camp.location.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesOrganizer = filterOrganizer === 'all' || camp.department === filterOrganizer;
     const matchesStatus = filterStatus === 'all' || camp.status === filterStatus;
-    return matchesSearch && matchesOrganizer && matchesStatus;
+    const matchesFormat = filterFormat === 'all' || camp.format === filterFormat;
+    return matchesSearch && matchesOrganizer && matchesStatus && matchesFormat;
   });
 
   // Get student's registrations
@@ -162,6 +164,20 @@ export default function StudentView({
                   <option value="completed">Đã kết thúc</option>
                 </select>
               </div>
+
+              <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5">
+                <Filter className="w-4 h-4 text-gray-500" />
+                <span className="text-xs text-gray-500 font-medium">Hình thức:</span>
+                <select
+                  value={filterFormat}
+                  onChange={(e: any) => setFilterFormat(e.target.value)}
+                  className="bg-transparent border-none text-xs font-semibold focus:outline-none text-gray-700 cursor-pointer"
+                >
+                  <option value="all">Tất cả hình thức</option>
+                  <option value="Trực tiếp">Trực tiếp</option>
+                  <option value="Trực tuyến">Trực tuyến</option>
+                </select>
+              </div>
             </div>
           </div>
 
@@ -244,10 +260,21 @@ export default function StudentView({
                     <div className="p-5 flex-1 flex flex-col justify-between">
                       <div>
                         {/* Thể loại & Điểm tích lũy */}
-                        <div className="flex items-center justify-between text-xs text-gray-500 mb-1.5">
-                          <span className="font-medium px-2 py-0.5 bg-gray-100 rounded-md text-gray-600">
-                            {camp.type}
-                          </span>
+                        <div className="flex items-center justify-between text-xs text-gray-500 mb-1.5 flex-wrap gap-1.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-medium px-2 py-0.5 bg-gray-100 rounded-md text-gray-600">
+                              {camp.type}
+                            </span>
+                            {camp.format && (
+                              <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                                camp.format === 'Trực tiếp'
+                                  ? 'bg-indigo-50 text-indigo-700 border border-indigo-100'
+                                  : 'bg-purple-50 text-purple-700 border border-purple-100'
+                              }`}>
+                                {camp.format}
+                              </span>
+                            )}
+                          </div>
                           <span className="flex items-center font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md">
                             <Award className="w-3.5 h-3.5 mr-1" />
                             +{camp.score} {camp.scoreType}

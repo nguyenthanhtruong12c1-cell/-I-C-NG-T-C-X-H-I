@@ -13,6 +13,7 @@ export interface Campaign {
   location: string;
   imageUrl?: string;
   skillsRequired?: string[];
+  format?: 'Trực tiếp' | 'Trực tuyến';
 }
 
 export interface Student {
