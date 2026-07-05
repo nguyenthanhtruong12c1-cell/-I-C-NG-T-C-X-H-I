@@ -1432,9 +1432,36 @@ export default function AdminView({
             setTimeout(() => setQrCopied(false), 2000);
           };
 
+          const handleDownloadQr = async () => {
+            try {
+              const response = await fetch(qrImageUrl);
+              const blob = await response.blob();
+              const url = window.URL.createObjectURL(blob);
+              const link = document.createElement('a');
+              link.href = url;
+              // Clean filename to standard alphanumeric format
+              const safeTitle = camp.title
+                .toLowerCase()
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .replace(/[đĐ]/g, 'd')
+                .replace(/[^a-z0-9]/g, '_')
+                .replace(/_+/g, '_');
+              link.download = `QR_${safeTitle}.png`;
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+              window.URL.revokeObjectURL(url);
+            } catch (error) {
+              console.error('Error downloading QR:', error);
+              // Fallback: Open in a new tab for manual save
+              window.open(qrImageUrl, '_blank');
+            }
+          };
+
           return (
             <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-              <div className="bg-white rounded-2xl max-w-sm w-full shadow-2xl border border-gray-100 overflow-hidden flex flex-col p-6 text-center space-y-4 animate-fade-in">
+              <div className="bg-white rounded-2xl max-w-sm w-full shadow-2xl border border-gray-100 overflow-hidden flex flex-col p-6 text-center space-y-4 animate-fade-in text-xs">
                 <div className="flex justify-between items-center pb-2 border-b border-gray-100">
                   <h3 className="font-display font-bold text-gray-800 text-sm flex items-center gap-1.5">
                     <QrCode className="w-5 h-5 text-purple-600" />
@@ -1442,7 +1469,7 @@ export default function AdminView({
                   </h3>
                   <button 
                     onClick={() => setViewingQrCampId(null)}
-                    className="text-gray-400 hover:text-gray-600 p-1.5 hover:bg-gray-50 rounded-lg transition-colors"
+                    className="text-gray-400 hover:text-gray-600 p-1.5 hover:bg-gray-50 rounded-lg transition-colors cursor-pointer"
                   >
                     <X className="w-5 h-5" />
                   </button>
@@ -1456,17 +1483,25 @@ export default function AdminView({
                 </div>
 
                 {/* QR Code Frame */}
-                <div className="mx-auto p-4 bg-gray-50 rounded-2xl border border-gray-200/50 inline-block">
+                <div className="mx-auto p-4 bg-gray-50 rounded-2xl border border-gray-200/50 inline-flex flex-col items-center gap-3">
                   <img 
                     src={qrImageUrl} 
                     alt="Mã QR Đăng ký" 
                     className="w-44 h-44 rounded-lg shadow-sm"
                     referrerPolicy="no-referrer"
                   />
+                  <button
+                    onClick={handleDownloadQr}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-[10px] font-bold shadow-md hover:shadow-lg transition-all cursor-pointer active:scale-95"
+                    title="Tải ảnh QR này về máy"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Tải ảnh QR (.png)</span>
+                  </button>
                 </div>
 
                 <p className="text-[10px] text-gray-500 leading-relaxed px-2">
-                  Chụp lại màn hình hoặc in mã QR này dán tại bảng tin Đoàn - Hội để Đội viên quét nhanh và đăng ký tham gia trực tiếp.
+                  Quét mã để chuyển ngay tới trang thông tin chiến dịch, hoặc bấm nút trên để tải tệp hình ảnh QR về thiết bị.
                 </p>
 
                 {/* Registration URL Copy Box */}
