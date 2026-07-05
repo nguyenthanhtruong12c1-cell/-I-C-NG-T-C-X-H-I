@@ -22,7 +22,7 @@ export const initialStudents: Student[] = [
     idCard: '012345678912',
     address: 'Thành phố Cao Lãnh, Đồng Tháp',
     club: 'Đội Công tác xã hội',
-    skills: ['Tình nguyện viên trực tiếp (hậu cần)', 'Thiết kế Canva', 'Ứng dụng AI sáng tạo'],
+    skills: ['Trực tiếp', 'Trực tuyến'],
     otherSkill: 'Biết lập trình web cơ bản',
     aiTool: 'Gemini, ChatGPT',
     portfolioUrl: 'https://drive.google.com/file/d/sample',

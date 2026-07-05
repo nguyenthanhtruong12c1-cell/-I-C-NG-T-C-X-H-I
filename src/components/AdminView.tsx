@@ -82,6 +82,7 @@ export default function AdminView({
   const [studentSearch, setStudentSearch] = useState('');
   const [studentFacultyFilter, setStudentFacultyFilter] = useState('all');
   const [studentStatusFilter, setStudentStatusFilter] = useState('all');
+  const [studentFormatFilter, setStudentFormatFilter] = useState('all');
   const [campaignSearch, setCampaignSearch] = useState('');
   
   // Modal State for New Campaign
@@ -107,7 +108,8 @@ export default function AdminView({
                           std.studentId.includes(studentSearch);
     const matchesFaculty = studentFacultyFilter === 'all' || std.faculty === studentFacultyFilter;
     const matchesStatus = studentStatusFilter === 'all' || std.status === studentStatusFilter;
-    return matchesSearch && matchesFaculty && matchesStatus;
+    const matchesFormat = studentFormatFilter === 'all' || (std.skills && std.skills.includes(studentFormatFilter));
+    return matchesSearch && matchesFaculty && matchesStatus && matchesFormat;
   });
 
   const filteredCampaigns = campaigns.filter(camp => 
@@ -177,7 +179,7 @@ export default function AdminView({
     let filename = '';
 
     if (reportType === 'students') {
-      headers = 'Họ tên,Giới tính,Ngày sinh,MSSV,Khoa,Ngành học,Lớp,Chi hội,CCCD,Địa chỉ thường trú,Email,Số điện thoại,CLB đang tham gia,Sở trường Kỹ năng,Kỹ năng khác,Công cụ AI thành thạo,Link sản phẩm,Facebook,TikTok,MXH khác,Số ngày CTXH đã tích lũy,Số ngày CTXH còn thiếu,Nguyện vọng ý kiến,Tổng số giờ đóng góp,Tổng ngày CTXH quy đổi,Trạng thái tài khoản\n';
+      headers = 'Họ tên,Giới tính,Ngày sinh,MSSV,Khoa,Ngành học,Lớp,Chi hội,CCCD,Địa chỉ thường trú,Email,Số điện thoại,CLB đang tham gia,Hình thức hoạt động,Kỹ năng khác,Công cụ AI thành thạo,Link sản phẩm,Facebook,TikTok,MXH khác,Số ngày CTXH đã tích lũy,Số ngày CTXH còn thiếu,Nguyện vọng ý kiến,Tổng số giờ đóng góp,Tổng ngày CTXH quy đổi,Trạng thái tài khoản\n';
       rows = students.map(s => {
         let birthDateStr = '';
         if (s.birthDate) {
@@ -600,6 +602,20 @@ export default function AdminView({
                   {faculties.map((fac) => (
                     <option key={fac} value={fac}>{fac}</option>
                   ))}
+                </select>
+              </div>
+
+              <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs">
+                <Filter className="w-3.5 h-3.5 text-gray-500" />
+                <span className="text-gray-500">Hình thức:</span>
+                <select
+                  value={studentFormatFilter}
+                  onChange={(e) => setStudentFormatFilter(e.target.value)}
+                  className="bg-transparent border-none font-semibold focus:outline-none text-gray-700 cursor-pointer text-xs"
+                >
+                  <option value="all">Tất cả hình thức</option>
+                  <option value="Trực tiếp">Trực tiếp</option>
+                  <option value="Trực tuyến">Trực tuyến</option>
                 </select>
               </div>
 
@@ -1640,7 +1656,7 @@ export default function AdminView({
                 </h4>
                 <div className="space-y-4 bg-gray-50 p-4 rounded-xl border border-gray-200">
                   <div>
-                    <span className="text-gray-400 block mb-1.5">Sở trường và kỹ năng bản thân:</span>
+                    <span className="text-gray-400 block mb-1.5">Hình thức hoạt động tình nguyện:</span>
                     {selectedStudentDetail.skills && selectedStudentDetail.skills.length > 0 ? (
                       <div className="flex flex-wrap gap-1.5">
                         {selectedStudentDetail.skills.map((skill, index) => (
@@ -1650,7 +1666,7 @@ export default function AdminView({
                         ))}
                       </div>
                     ) : (
-                      <span className="text-gray-400 italic">Chưa chọn kỹ năng nào</span>
+                      <span className="text-gray-400 italic">Chưa chọn hình thức hoạt động nào</span>
                     )}
                   </div>
 
@@ -1987,17 +2003,10 @@ export default function AdminView({
 
                   <div className="space-y-4">
                     <div>
-                      <span className="text-gray-500 font-semibold block mb-2">1. Sở trường và kỹ năng bản thân:</span>
+                      <span className="text-gray-500 font-semibold block mb-2">1. Hình thức hoạt động tình nguyện:</span>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 bg-gray-50 p-4 rounded-xl border border-gray-150">
                         {[
-                          'Tình nguyện viên trực tiếp (hậu cần)', 'Tình nguyện viên trực tuyến',
-                          'Ca hát', 'Nhảy, múa',
-                          'Dẫn chương trình (MC)', 'Lễ tân',
-                          'Chụp ảnh', 'Quay phim',
-                          'Viết bài (Content)', 'Thiết kế đồ họa',
-                          'Biên tập video', 'Tin học văn phòng',
-                          'Ngoại ngữ (Tiếng Anh, v.v.)', 'Kỹ năng hoạt náo',
-                          'Sáng tạo nội dung TikTok/Reels'
+                          'Trực tiếp', 'Trực tuyến'
                         ].map((skill) => {
                           const checked = viewingRegistrationStudent.skills?.includes(skill);
                           return (

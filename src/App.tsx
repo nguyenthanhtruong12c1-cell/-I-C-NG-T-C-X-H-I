@@ -45,19 +45,8 @@ const STORAGE_KEY_CURRENT_USER = 'vol_portal_current_user';
 const STORAGE_KEY_ROLE = 'vol_portal_role';
 
 const AVAILABLE_SKILLS = [
-  'Tình nguyện viên trực tiếp (hậu cần)',
-  'Tình nguyện viên trực tuyến',
-  'Ca hát',
-  'Nhảy, múa',
-  'Dẫn chương trình (MC)',
-  'Lễ tân',
-  'Thiết kế Canva',
-  'Photoshop / CorelDRAW',
-  'Ứng dụng AI sáng tạo',
-  'Quay phim, Chụp ảnh',
-  'Viết lách',
-  'Soạn thảo văn bản (Word)',
-  'Thuyết trình'
+  'Trực tiếp',
+  'Trực tuyến'
 ];
 
 export default function App() {
@@ -445,7 +434,7 @@ export default function App() {
 
         <div class="section-title">PHẦN II. ĐẶC ĐIỂM CÁ NHÂN VÀ NGUYỆN VỌNG</div>
         
-        <div style="margin-bottom: 8px; font-weight: bold;">1. Sở trường và kỹ năng bản thân (<i>Đánh dấu &checkmark; vào ô phù hợp</i>):</div>
+        <div style="margin-bottom: 8px; font-weight: bold;">1. Hình thức hoạt động tình nguyện (<i>Đánh dấu &checkmark; vào ô phù hợp</i>):</div>
         
         <table class="skills-table">
           ${pairedSkills.join('')}
@@ -1311,7 +1300,7 @@ export default function App() {
 
                       <div className="space-y-2">
                         <label className="text-gray-600 font-semibold block">
-                          1. Sở trường và kỹ năng bản thân (Đánh dấu ✓ vào ô phù hợp):
+                          1. Hình thức hoạt động tình nguyện (Có thể chọn cả 2 hình thức):
                         </label>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-gray-50 p-3 rounded-xl border border-gray-200">
                           {AVAILABLE_SKILLS.map((skill) => {
@@ -1988,7 +1977,7 @@ export default function App() {
 
                   <div className="space-y-4">
                     <div>
-                      <span className="text-gray-500 font-semibold block mb-2">1. Sở trường và kỹ năng bản thân:</span>
+                      <span className="text-gray-500 font-semibold block mb-2">1. Hình thức hoạt động tình nguyện:</span>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 bg-gray-50 p-4 rounded-xl border border-gray-150">
                         {AVAILABLE_SKILLS.map((skill) => {
                           const checked = pendingStudent.skills?.includes(skill);

@@ -561,17 +561,17 @@ export default function StudentView({
                   </h4>
                   <div className="space-y-4 bg-gray-50 p-4 rounded-xl border border-gray-200">
                     <div>
-                      <span className="text-gray-400 block mb-1.5">Sở trường & Kỹ năng bản thân:</span>
+                      <span className="text-gray-400 block mb-1.5">Hình thức hoạt động tình nguyện:</span>
                       {activeStudent.skills && activeStudent.skills.length > 0 ? (
                         <div className="flex flex-wrap gap-1.5">
                           {activeStudent.skills.map((skill, index) => (
-                            <span key={index} className="bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-0.5 rounded text-[10px] font-semibold">
+                            <span key={index} className="bg-emerald-50 text-emerald-700 border border-emerald-100 px-2.5 py-0.5 rounded text-[10px] font-semibold">
                               ✓ {skill}
                             </span>
                           ))}
                         </div>
                       ) : (
-                        <span className="text-gray-400 italic">Chưa đăng ký sở trường nào</span>
+                        <span className="text-gray-400 italic">Chưa đăng ký hình thức hoạt động nào</span>
                       )}
                     </div>
 
