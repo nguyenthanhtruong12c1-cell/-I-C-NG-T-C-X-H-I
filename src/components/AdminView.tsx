@@ -30,7 +30,8 @@ import {
   QrCode,
   Clipboard,
   ExternalLink,
-  FileText
+  FileText,
+  ArrowUpDown
 } from 'lucide-react';
 
 interface AdminViewProps {
@@ -98,20 +99,32 @@ export default function AdminView({
   const [newCampScoreType, setNewCampScoreType] = useState<'Ngày' | 'Giờ'>('Ngày');
   const [newCampFormat, setNewCampFormat] = useState<'Trực tiếp' | 'Trực tuyến'>('Trực tiếp');
 
+  const [studentSortOrder, setStudentSortOrder] = useState<'none' | 'score-asc' | 'score-desc'>('none');
+
   // Attendance and Performance grading states
   const [selectedEvaluationReg, setSelectedEvaluationReg] = useState<Registration | null>(null);
   const [evalAttendance, setEvalAttendance] = useState<'present' | 'absent' | 'excused'>('present');
   const [evalScore, setEvalScore] = useState<number>(9);
 
-  // Filter lists
-  const filteredStudents = students.filter(std => {
-    const matchesSearch = std.name.toLowerCase().includes(studentSearch.toLowerCase()) || 
-                          std.studentId.includes(studentSearch);
-    const matchesFaculty = studentFacultyFilter === 'all' || std.faculty === studentFacultyFilter;
-    const matchesStatus = studentStatusFilter === 'all' || std.status === studentStatusFilter;
-    const matchesFormat = studentFormatFilter === 'all' || (std.skills && std.skills.includes(studentFormatFilter));
-    return matchesSearch && matchesFaculty && matchesStatus && matchesFormat;
-  });
+  // Filter & sort lists
+  const filteredStudents = (() => {
+    const res = students.filter(std => {
+      const matchesSearch = std.name.toLowerCase().includes(studentSearch.toLowerCase()) || 
+                            std.studentId.includes(studentSearch);
+      const matchesFaculty = studentFacultyFilter === 'all' || std.faculty === studentFacultyFilter;
+      const matchesStatus = studentStatusFilter === 'all' || std.status === studentStatusFilter;
+      const matchesFormat = studentFormatFilter === 'all' || (std.skills && std.skills.includes(studentFormatFilter));
+      return matchesSearch && matchesFaculty && matchesStatus && matchesFormat;
+    });
+
+    if (studentSortOrder === 'score-asc') {
+      return [...res].sort((a, b) => (a.totalScore || 0) - (b.totalScore || 0));
+    } else if (studentSortOrder === 'score-desc') {
+      return [...res].sort((a, b) => (b.totalScore || 0) - (a.totalScore || 0));
+    }
+
+    return res;
+  })();
 
   const filteredCampaigns = campaigns.filter(camp => 
     camp.title.toLowerCase().includes(campaignSearch.toLowerCase()) || 
@@ -182,7 +195,7 @@ export default function AdminView({
     let filename = '';
 
     if (reportType === 'students') {
-      headers = 'Họ tên,Giới tính,Ngày sinh,MSSV,Khoa,Ngành học,Lớp,Chi hội,CCCD,Địa chỉ thường trú,Email,Số điện thoại,CLB đang tham gia,Hình thức hoạt động,Kỹ năng khác,Công cụ AI thành thạo,Link sản phẩm,Facebook,TikTok,MXH khác,Số ngày CTXH đã tích lũy,Số ngày CTXH còn thiếu,Nguyện vọng ý kiến,Tổng số giờ đóng góp,Tổng ngày CTXH quy đổi,Trạng thái tài khoản\n';
+      headers = 'Họ tên,Giới tính,Ngày sinh,MSSV,Khoa,Ngành học,Lớp,Chi hội,CCCD,Địa chỉ thường trú,Email,Số điện thoại,CLB đang tham gia,Hình thức hoạt động,Kỹ năng khác,Công cụ AI thành thạo,Link sản phẩm,Facebook,TikTok,MXH khác,Số ngày CTXH đã tích lũy,Số ngày CTXH còn thiếu,Nguyện vọng ý kiến,Tổng số giờ đóng góp,Tổng điểm tích lũy chiến dịch,Trạng thái tài khoản\n';
       rows = students.map(s => {
         let birthDateStr = '';
         if (s.birthDate) {
@@ -433,9 +446,9 @@ export default function AdminView({
                 <span className="text-[10px] text-emerald-600 font-medium flex items-center mt-1">Công tác xã hội</span>
               </div>
               <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-xs">
-                <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block">Ngày CTXH quy đổi</span>
-                <span className="text-2xl font-bold text-amber-600 block mt-1">+{stats.totalScoreAwarded} Ngày</span>
-                <span className="text-[10px] text-[#00529C] font-semibold flex items-center mt-1">Hội Sinh viên quy đổi</span>
+                <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider block">Tổng điểm rèn luyện/đánh giá</span>
+                <span className="text-2xl font-bold text-amber-600 block mt-1">+{stats.totalScoreAwarded} Điểm</span>
+                <span className="text-[10px] text-[#00529C] font-semibold flex items-center mt-1">Từ các chiến dịch hoạt động</span>
               </div>
             </div>
 
@@ -636,6 +649,20 @@ export default function AdminView({
                   <option value="locked">Bị khóa sổ / Từ chối</option>
                 </select>
               </div>
+
+              <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs">
+                <ArrowUpDown className="w-3.5 h-3.5 text-[#00529C]" />
+                <span className="text-gray-500">Sắp xếp theo điểm:</span>
+                <select
+                  value={studentSortOrder}
+                  onChange={(e: any) => setStudentSortOrder(e.target.value)}
+                  className="bg-transparent border-none font-semibold focus:outline-none text-gray-700 cursor-pointer text-xs"
+                >
+                  <option value="none">Không sắp xếp</option>
+                  <option value="score-desc">Điểm tích lũy (Cao → Thấp)</option>
+                  <option value="score-asc">Điểm tích lũy (Thấp → Cao)</option>
+                </select>
+              </div>
             </div>
 
             {/* Bảng dữ liệu sinh viên */}
@@ -646,7 +673,7 @@ export default function AdminView({
                     <th className="p-3.5">Họ & Tên / MSSV</th>
                     <th className="p-3.5">Khoa / Lớp</th>
                     <th className="p-3.5">Vai trò</th>
-                    <th className="p-3.5 text-center">Hoạt động / Ngày CTXH</th>
+                    <th className="p-3.5 text-center">Hoạt động (Giờ / Điểm)</th>
                     <th className="p-3.5">Trạng thái</th>
                     <th className="p-3.5 text-right">Tác vụ</th>
                   </tr>
@@ -698,7 +725,7 @@ export default function AdminView({
                       </td>
                       <td className="p-3.5 text-center">
                         <div className="font-bold text-gray-800">{std.totalHours} giờ</div>
-                        <div className="text-emerald-600 font-semibold text-[10px] mt-0.5">+{std.totalScore} ngày</div>
+                        <div className="text-emerald-600 font-extrabold text-[11px] mt-0.5">+{std.totalScore} Điểm</div>
                       </td>
                       <td className="p-3.5">
                         {std.status === 'active' && (
@@ -1782,15 +1809,15 @@ export default function AdminView({
                 </h4>
                 <div className="grid grid-cols-3 gap-3">
                   <div className="bg-purple-50/50 p-3 rounded-xl border border-purple-100 text-center">
-                    <span className="text-gray-400 block mb-0.5">Tổng số giờ tham gia</span>
+                    <span className="text-[10px] text-gray-500 block mb-0.5">Tổng số giờ tham gia</span>
                     <span className="text-base font-bold text-purple-700">{selectedStudentDetail.totalHours} Giờ</span>
                   </div>
                   <div className="bg-emerald-50/50 p-3 rounded-xl border border-emerald-100 text-center">
-                    <span className="text-gray-400 block mb-0.5">Số ngày CTXH tích luỹ</span>
-                    <span className="text-base font-bold text-emerald-700">+{selectedStudentDetail.totalScore} Ngày</span>
+                    <span className="text-[10px] text-gray-500 block mb-0.5">Điểm đánh giá chiến dịch</span>
+                    <span className="text-base font-bold text-emerald-700">{selectedStudentDetail.totalScore} Điểm</span>
                   </div>
                   <div className="bg-blue-50/50 p-3 rounded-xl border border-blue-100 text-center">
-                    <span className="text-gray-400 block mb-0.5">Vai trò thành viên</span>
+                    <span className="text-[10px] text-gray-500 block mb-0.5">Vai trò thành viên</span>
                     <span className="text-xs font-bold text-[#00529C] uppercase block mt-1.5">
                       {selectedStudentDetail.role === 'admin' ? 'Ban điều hành' : selectedStudentDetail.role === 'leader' ? 'Nhóm trưởng' : 'Đội viên'}
                     </span>

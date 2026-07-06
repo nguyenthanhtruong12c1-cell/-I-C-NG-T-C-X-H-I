@@ -455,11 +455,11 @@ export default function StudentView({
                 Thành tích tích lũy
               </h4>
 
-              {/* Progress bar Số ngày công tác xã hội quy đổi */}
+              {/* Progress bar Điểm tích lũy chiến dịch */}
               <div className="space-y-2">
                 <div className="flex justify-between text-xs">
-                  <span className="text-gray-500 font-medium">Số ngày công tác xã hội quy đổi</span>
-                  <span className="font-bold text-[#00529C]">{activeStudent.totalScore} Ngày</span>
+                  <span className="text-gray-500 font-medium">Điểm tích lũy rèn luyện / đánh giá</span>
+                  <span className="font-bold text-[#00529C]">{activeStudent.totalScore} Điểm</span>
                 </div>
                 <div className="w-full h-2.5 bg-gray-100 rounded-full overflow-hidden">
                   <div 
@@ -469,6 +469,24 @@ export default function StudentView({
                 </div>
                 <div className="flex justify-between text-[10px] text-gray-400">
                   <span>Chỉ tiêu: 0</span>
+                  <span>Đạt chuẩn: 15 Điểm</span>
+                </div>
+              </div>
+
+              {/* Progress bar Số ngày CTXH đã tích lũy */}
+              <div className="space-y-2">
+                <div className="flex justify-between text-xs">
+                  <span className="text-gray-500 font-medium">Số ngày CTXH đã tích lũy</span>
+                  <span className="font-bold text-emerald-600">{(activeStudent.ctxhAccumulated ?? 0)} Ngày</span>
+                </div>
+                <div className="w-full h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-emerald-500 rounded-full" 
+                    style={{ width: `${Math.min(100, ((activeStudent.ctxhAccumulated ?? 0) / 15) * 100)}%` }}
+                  />
+                </div>
+                <div className="flex justify-between text-[10px] text-gray-400">
+                  <span>Thiếu: {activeStudent.ctxhMissing ?? 0} Ngày</span>
                   <span>Đạt chuẩn: 15 Ngày</span>
                 </div>
               </div>

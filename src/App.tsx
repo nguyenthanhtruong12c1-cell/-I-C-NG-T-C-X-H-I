@@ -805,9 +805,15 @@ export default function App() {
         attendanceStatus: attendance,
         performanceScore: score
       });
+
+      const updatedCtxhAccumulated = (student.ctxhAccumulated || 0) + scoreToAward;
+      const updatedCtxhMissing = Math.max(0, (student.ctxhMissing || 0) - scoreToAward);
+
       batch.update(doc(db, 'students', student.id), {
         totalScore: (student.totalScore || 0) + scoreToAward,
-        totalHours: (student.totalHours || 0) + hoursToAward
+        totalHours: (student.totalHours || 0) + hoursToAward,
+        ctxhAccumulated: updatedCtxhAccumulated,
+        ctxhMissing: updatedCtxhMissing
       });
       await batch.commit();
     } catch (error) {
