@@ -30,6 +30,7 @@ export const initialStudents: Student[] = [
     tiktok: 'https://tiktok.com/@nguyenvana',
     ctxhAccumulated: 5.5,
     ctxhMissing: 9.5,
+    totalPerformanceScore: 0,
     aspiration: 'Mong muốn được đóng góp tích cực cho các hoạt động tình nguyện của Đội và rèn luyện kỹ năng mềm.'
   }
 ];

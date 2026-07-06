@@ -509,6 +509,24 @@ export default function StudentView({
                 </div>
               </div>
 
+              {/* Progress bar Tổng điểm Ban tổ chức đánh giá */}
+              <div className="space-y-2">
+                <div className="flex justify-between text-xs">
+                  <span className="text-gray-500 font-medium">Tổng điểm Ban tổ chức đánh giá</span>
+                  <span className="font-bold text-amber-600">{activeStudent.totalPerformanceScore ?? 0} Điểm</span>
+                </div>
+                <div className="w-full h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-amber-500 rounded-full" 
+                    style={{ width: `${Math.min(100, (((activeStudent.totalPerformanceScore ?? 0) / (completedRegs.length > 0 ? completedRegs.length * 10 : 10)) * 100))}%` }}
+                  />
+                </div>
+                <div className="flex justify-between text-[10px] text-gray-400">
+                  <span>Tối đa: {(completedRegs.length || 1) * 10} Điểm</span>
+                  <span>Trung bình: {completedRegs.length > 0 ? ((activeStudent.totalPerformanceScore ?? 0) / completedRegs.length).toFixed(1) : 0}/10 Điểm</span>
+                </div>
+              </div>
+
               {/* Tóm tắt nhanh */}
               <div className="grid grid-cols-2 gap-3 pt-2">
                 <div className="bg-gray-50 rounded-xl p-3 text-center border border-gray-100">

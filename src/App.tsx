@@ -593,6 +593,7 @@ export default function App() {
       otherSocial: regOtherSocial.trim(),
       ctxhAccumulated: regCtxhAccumulated ? parseFloat(String(regCtxhAccumulated).replace(',', '.')) : 0,
       ctxhMissing: regCtxhMissing ? parseFloat(String(regCtxhMissing).replace(',', '.')) : 0,
+      totalPerformanceScore: 0,
       aspiration: regAspiration.trim(),
       totalHours: 0,
       totalScore: 0,
@@ -808,12 +809,14 @@ export default function App() {
 
       const updatedCtxhAccumulated = (student.ctxhAccumulated || 0) + scoreToAward;
       const updatedCtxhMissing = Math.max(0, (student.ctxhMissing || 0) - scoreToAward);
+      const updatedTotalPerformanceScore = (student.totalPerformanceScore || 0) + score;
 
       batch.update(doc(db, 'students', student.id), {
         totalScore: (student.totalScore || 0) + scoreToAward,
         totalHours: (student.totalHours || 0) + hoursToAward,
         ctxhAccumulated: updatedCtxhAccumulated,
-        ctxhMissing: updatedCtxhMissing
+        ctxhMissing: updatedCtxhMissing,
+        totalPerformanceScore: updatedTotalPerformanceScore
       });
       await batch.commit();
     } catch (error) {

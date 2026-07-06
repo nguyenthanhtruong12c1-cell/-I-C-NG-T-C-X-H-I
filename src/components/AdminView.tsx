@@ -99,7 +99,7 @@ export default function AdminView({
   const [newCampScoreType, setNewCampScoreType] = useState<'Ngày' | 'Giờ'>('Ngày');
   const [newCampFormat, setNewCampFormat] = useState<'Trực tiếp' | 'Trực tuyến'>('Trực tiếp');
 
-  const [studentSortOrder, setStudentSortOrder] = useState<'none' | 'score-asc' | 'score-desc'>('none');
+  const [studentSortOrder, setStudentSortOrder] = useState<'none' | 'score-asc' | 'score-desc' | 'perf-asc' | 'perf-desc'>('none');
 
   // Attendance and Performance grading states
   const [selectedEvaluationReg, setSelectedEvaluationReg] = useState<Registration | null>(null);
@@ -121,6 +121,10 @@ export default function AdminView({
       return [...res].sort((a, b) => (a.totalScore || 0) - (b.totalScore || 0));
     } else if (studentSortOrder === 'score-desc') {
       return [...res].sort((a, b) => (b.totalScore || 0) - (a.totalScore || 0));
+    } else if (studentSortOrder === 'perf-asc') {
+      return [...res].sort((a, b) => (a.totalPerformanceScore || 0) - (b.totalPerformanceScore || 0));
+    } else if (studentSortOrder === 'perf-desc') {
+      return [...res].sort((a, b) => (b.totalPerformanceScore || 0) - (a.totalPerformanceScore || 0));
     }
 
     return res;
@@ -195,7 +199,7 @@ export default function AdminView({
     let filename = '';
 
     if (reportType === 'students') {
-      headers = 'Họ tên,Giới tính,Ngày sinh,MSSV,Khoa,Ngành học,Lớp,Chi hội,CCCD,Địa chỉ thường trú,Email,Số điện thoại,CLB đang tham gia,Hình thức hoạt động,Kỹ năng khác,Công cụ AI thành thạo,Link sản phẩm,Facebook,TikTok,MXH khác,Số ngày CTXH đã tích lũy,Số ngày CTXH còn thiếu,Nguyện vọng ý kiến,Tổng số giờ đóng góp,Tổng điểm tích lũy chiến dịch,Trạng thái tài khoản\n';
+      headers = 'Họ tên,Giới tính,Ngày sinh,MSSV,Khoa,Ngành học,Lớp,Chi hội,CCCD,Địa chỉ thường trú,Email,Số điện thoại,CLB đang tham gia,Hình thức hoạt động,Kỹ năng khác,Công cụ AI thành thạo,Link sản phẩm,Facebook,TikTok,MXH khác,Số ngày CTXH đã tích lũy,Số ngày CTXH còn thiếu,Nguyện vọng ý kiến,Tổng số giờ đóng góp,Tổng điểm tích lũy chiến dịch,Tổng điểm BTC đánh giá,Trạng thái tài khoản\n';
       rows = students.map(s => {
         let birthDateStr = '';
         if (s.birthDate) {
@@ -235,6 +239,7 @@ export default function AdminView({
           s.aspiration || '',
           s.totalHours.toString(),
           s.totalScore.toString(),
+          (s.totalPerformanceScore ?? 0).toString(),
           statusText
         ];
       });
@@ -659,8 +664,10 @@ export default function AdminView({
                   className="bg-transparent border-none font-semibold focus:outline-none text-gray-700 cursor-pointer text-xs"
                 >
                   <option value="none">Không sắp xếp</option>
-                  <option value="score-desc">Điểm tích lũy (Cao → Thấp)</option>
-                  <option value="score-asc">Điểm tích lũy (Thấp → Cao)</option>
+                  <option value="score-desc">Điểm chiến dịch (Cao → Thấp)</option>
+                  <option value="score-asc">Điểm chiến dịch (Thấp → Cao)</option>
+                  <option value="perf-desc">Điểm BTC đánh giá (Cao → Thấp)</option>
+                  <option value="perf-asc">Điểm BTC đánh giá (Thấp → Cao)</option>
                 </select>
               </div>
             </div>
@@ -725,7 +732,7 @@ export default function AdminView({
                       </td>
                       <td className="p-3.5 text-center">
                         <div className="font-bold text-gray-800">{std.totalHours} giờ</div>
-                        <div className="text-emerald-600 font-extrabold text-[11px] mt-0.5">+{std.totalScore} Điểm</div>
+                        <div className="text-amber-600 font-extrabold text-[11px] mt-0.5">BTC: {std.totalPerformanceScore ?? 0}đ</div>
                       </td>
                       <td className="p-3.5">
                         {std.status === 'active' && (
@@ -1807,7 +1814,7 @@ export default function AdminView({
                   <span className="w-1.5 h-3 bg-purple-500 rounded-full inline-block"></span>
                   Thành tích cống hiến tổng thể
                 </h4>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 gap-3">
                   <div className="bg-purple-50/50 p-3 rounded-xl border border-purple-100 text-center">
                     <span className="text-[10px] text-gray-500 block mb-0.5">Tổng số giờ tham gia</span>
                     <span className="text-base font-bold text-purple-700">{selectedStudentDetail.totalHours} Giờ</span>
@@ -1815,6 +1822,10 @@ export default function AdminView({
                   <div className="bg-emerald-50/50 p-3 rounded-xl border border-emerald-100 text-center">
                     <span className="text-[10px] text-gray-500 block mb-0.5">Điểm đánh giá chiến dịch</span>
                     <span className="text-base font-bold text-emerald-700">{selectedStudentDetail.totalScore} Điểm</span>
+                  </div>
+                  <div className="bg-amber-50/50 p-3 rounded-xl border border-amber-100 text-center">
+                    <span className="text-[10px] text-gray-500 block mb-0.5">Tổng điểm BTC đánh giá</span>
+                    <span className="text-base font-bold text-amber-700">{selectedStudentDetail.totalPerformanceScore ?? 0} Điểm</span>
                   </div>
                   <div className="bg-blue-50/50 p-3 rounded-xl border border-blue-100 text-center">
                     <span className="text-[10px] text-gray-500 block mb-0.5">Vai trò thành viên</span>

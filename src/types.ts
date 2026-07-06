@@ -45,6 +45,7 @@ export interface Student {
   ctxhAccumulated?: number; // Số ngày CTXH đã tích lũy
   ctxhMissing?: number; // Số ngày CTXH còn thiếu
   aspiration?: string; // Nguyện vọng / Kỳ vọng cá nhân khi tham gia
+  totalPerformanceScore?: number; // Tổng điểm Ban tổ chức đánh giá tích lũy
 }
 
 export interface Registration {
