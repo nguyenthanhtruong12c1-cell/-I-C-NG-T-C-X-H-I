@@ -788,16 +788,39 @@ export default function App() {
     const student = students.find(s => s.id === reg.studentId);
     if (!student) return;
 
-    let scoreToAward = 0;
-    let hoursToAward = 0;
+    // Check if we are editing an already completed registration
+    const isEditing = reg.status === 'completed';
+
+    // Calculate old awarded values (if it was completed)
+    let oldScoreToAward = 0;
+    let oldHoursToAward = 0;
+    const oldPerformanceScore = isEditing ? (reg.performanceScore || 0) : 0;
+
+    if (isEditing && reg.attendanceStatus === 'present') {
+      if (campaign.scoreType === 'Ngày') {
+        oldScoreToAward = campaign.score;
+      } else {
+        oldHoursToAward = campaign.score;
+      }
+    }
+
+    // Calculate new awarded values
+    let newScoreToAward = 0;
+    let newHoursToAward = 0;
+    const newPerformanceScore = score;
 
     if (attendance === 'present') {
       if (campaign.scoreType === 'Ngày') {
-        scoreToAward = campaign.score;
+        newScoreToAward = campaign.score;
       } else {
-        hoursToAward = campaign.score;
+        newHoursToAward = campaign.score;
       }
     }
+
+    // Deltas
+    const deltaScore = newScoreToAward - oldScoreToAward;
+    const deltaHours = newHoursToAward - oldHoursToAward;
+    const deltaPerformanceScore = newPerformanceScore - oldPerformanceScore;
 
     try {
       const batch = writeBatch(db);
@@ -807,13 +830,13 @@ export default function App() {
         performanceScore: score
       });
 
-      const updatedCtxhAccumulated = (student.ctxhAccumulated || 0) + scoreToAward;
-      const updatedCtxhMissing = Math.max(0, (student.ctxhMissing || 0) - scoreToAward);
-      const updatedTotalPerformanceScore = (student.totalPerformanceScore || 0) + score;
+      const updatedCtxhAccumulated = (student.ctxhAccumulated || 0) + deltaScore;
+      const updatedCtxhMissing = Math.max(0, (student.ctxhMissing || 0) - deltaScore);
+      const updatedTotalPerformanceScore = (student.totalPerformanceScore || 0) + deltaPerformanceScore;
 
       batch.update(doc(db, 'students', student.id), {
-        totalScore: (student.totalScore || 0) + scoreToAward,
-        totalHours: (student.totalHours || 0) + hoursToAward,
+        totalScore: (student.totalScore || 0) + deltaScore,
+        totalHours: (student.totalHours || 0) + deltaHours,
         ctxhAccumulated: updatedCtxhAccumulated,
         ctxhMissing: updatedCtxhMissing,
         totalPerformanceScore: updatedTotalPerformanceScore
@@ -822,6 +845,45 @@ export default function App() {
     } catch (error) {
       console.error('Error completing campaign registration:', error);
       handleFirestoreError(error, OperationType.WRITE, `registrations/${regId}`);
+    }
+  };
+
+  // Sync and recalculate all student accumulated performance scores based on registrations
+  const handleSyncAllStudentScores = async (): Promise<{ success: boolean; count: number }> => {
+    try {
+      const batch = writeBatch(db);
+      let count = 0;
+
+      for (const student of students) {
+        // Find completed registrations with performanceScore for this student
+        const studentCompletedRegs = registrations.filter(
+          (r) => r.studentId === student.id && r.status === 'completed'
+        );
+
+        let calculatedTotalPerformanceScore = 0;
+        studentCompletedRegs.forEach((reg) => {
+          if (reg.performanceScore !== undefined) {
+            calculatedTotalPerformanceScore += reg.performanceScore;
+          }
+        });
+
+        // Check if there's any mismatch
+        if ((student.totalPerformanceScore || 0) !== calculatedTotalPerformanceScore) {
+          batch.update(doc(db, 'students', student.id), {
+            totalPerformanceScore: calculatedTotalPerformanceScore
+          });
+          count++;
+        }
+      }
+
+      if (count > 0) {
+        await batch.commit();
+      }
+      return { success: true, count };
+    } catch (error) {
+      console.error('Error syncing student scores:', error);
+      handleFirestoreError(error, OperationType.WRITE, 'students_bulk_sync');
+      throw error;
     }
   };
 
@@ -1517,6 +1579,7 @@ export default function App() {
                 onUpdateCampaignStatus={handleUpdateCampaignStatus}
                 onApproveStudent={handleApproveStudent}
                 onDownloadDocx={handleDownloadDocx}
+                onSyncAllStudentScores={handleSyncAllStudentScores}
               />
             )}
           </main>

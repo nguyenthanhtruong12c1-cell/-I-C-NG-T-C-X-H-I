@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Campaign, Student, Registration, Statistics } from '../types';
 import { 
   LayoutDashboard, 
@@ -31,7 +31,8 @@ import {
   Clipboard,
   ExternalLink,
   FileText,
-  ArrowUpDown
+  ArrowUpDown,
+  RefreshCw
 } from 'lucide-react';
 
 interface AdminViewProps {
@@ -49,6 +50,7 @@ interface AdminViewProps {
   onUpdateCampaignStatus?: (campaignId: string, status: 'open' | 'paused' | 'completed') => void;
   onApproveStudent: (studentId: string, approved: boolean) => void;
   onDownloadDocx: (student: Student) => void;
+  onSyncAllStudentScores?: () => Promise<{ success: boolean; count: number }>;
 }
 
 export default function AdminView({
@@ -65,11 +67,13 @@ export default function AdminView({
   onDeleteCampaign,
   onUpdateCampaignStatus,
   onApproveStudent,
-  onDownloadDocx
+  onDownloadDocx,
+  onSyncAllStudentScores
 }: AdminViewProps) {
   const [activeMenu, setActiveMenu] = useState<'dashboard' | 'students' | 'campaigns' | 'reports'>('dashboard');
   const [selectedStudentDetail, setSelectedStudentDetail] = useState<Student | null>(null);
   const [viewingRegistrationStudent, setViewingRegistrationStudent] = useState<Student | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
   
   // Registration list modal state
   const [viewingCampRegsId, setViewingCampRegsId] = useState<string | null>(null);
@@ -105,6 +109,16 @@ export default function AdminView({
   const [selectedEvaluationReg, setSelectedEvaluationReg] = useState<Registration | null>(null);
   const [evalAttendance, setEvalAttendance] = useState<'present' | 'absent' | 'excused'>('present');
   const [evalScore, setEvalScore] = useState<number>(9);
+
+  useEffect(() => {
+    if (selectedEvaluationReg) {
+      setEvalAttendance(selectedEvaluationReg.attendanceStatus || 'present');
+      setEvalScore(selectedEvaluationReg.performanceScore !== undefined ? selectedEvaluationReg.performanceScore : 9);
+    } else {
+      setEvalAttendance('present');
+      setEvalScore(9);
+    }
+  }, [selectedEvaluationReg]);
 
   // Filter & sort lists
   const filteredStudents = (() => {
@@ -199,7 +213,7 @@ export default function AdminView({
     let filename = '';
 
     if (reportType === 'students') {
-      headers = 'Họ tên,Giới tính,Ngày sinh,MSSV,Khoa,Ngành học,Lớp,Chi hội,CCCD,Địa chỉ thường trú,Email,Số điện thoại,CLB đang tham gia,Hình thức hoạt động,Kỹ năng khác,Công cụ AI thành thạo,Link sản phẩm,Facebook,TikTok,MXH khác,Số ngày CTXH đã tích lũy,Số ngày CTXH còn thiếu,Nguyện vọng ý kiến,Tổng số giờ đóng góp,Tổng điểm tích lũy chiến dịch,Tổng điểm BTC đánh giá,Trạng thái tài khoản\n';
+      headers = 'Họ tên,Giới tính,Ngày sinh,MSSV,Khoa,Ngành học,Lớp,Chi hội,CCCD,Địa chỉ thường trú,Email,Số điện thoại,CLB đang tham gia,Hình thức hoạt động,Kỹ năng khác,Công cụ AI thành thạo,Link sản phẩm,Facebook,TikTok,MXH khác,Số ngày CTXH đã tích lũy,Số ngày CTXH còn thiếu,Nguyện vọng ý kiến,Tổng số giờ đóng góp,Tổng điểm tích lũy chiến dịch,Tổng điểm đánh giá,Trạng thái tài khoản\n';
       rows = students.map(s => {
         let birthDateStr = '';
         if (s.birthDate) {
@@ -572,13 +586,36 @@ export default function AdminView({
                 <p className="text-xs text-gray-400 mt-0.5">Quản lý trạng thái, cấp quyền nhóm trưởng và theo dõi thành tích tích lũy</p>
               </div>
 
-              <button
-                onClick={() => handleExportCSV('students')}
-                className="px-3 py-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors self-start md:self-auto"
-              >
-                <FileSpreadsheet className="w-4 h-4" />
-                Xuất danh sách (Excel)
-              </button>
+              <div className="flex flex-wrap gap-2 self-start md:self-auto">
+                <button
+                  onClick={async () => {
+                    if (onSyncAllStudentScores) {
+                      setIsSyncing(true);
+                      try {
+                        const res = await onSyncAllStudentScores();
+                        alert(`Đã rà soát và cập nhật cộng dồn điểm đánh giá thành công cho ${res.count} đội viên!`);
+                      } catch (err) {
+                        alert('Có lỗi xảy ra khi rà soát và đồng bộ điểm đánh giá.');
+                      } finally {
+                        setIsSyncing(false);
+                      }
+                    }
+                  }}
+                  disabled={isSyncing}
+                  className="px-3 py-2 bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                  {isSyncing ? 'Đang rà soát...' : 'Rà soát & Cộng dồn điểm'}
+                </button>
+
+                <button
+                  onClick={() => handleExportCSV('students')}
+                  className="px-3 py-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <FileSpreadsheet className="w-4 h-4" />
+                  Xuất danh sách (Excel)
+                </button>
+              </div>
             </div>
 
             {pendingStudentsCount > 0 && (
@@ -666,8 +703,8 @@ export default function AdminView({
                   <option value="none">Không sắp xếp</option>
                   <option value="score-desc">Điểm chiến dịch (Cao → Thấp)</option>
                   <option value="score-asc">Điểm chiến dịch (Thấp → Cao)</option>
-                  <option value="perf-desc">Điểm BTC đánh giá (Cao → Thấp)</option>
-                  <option value="perf-asc">Điểm BTC đánh giá (Thấp → Cao)</option>
+                  <option value="perf-desc">Điểm đánh giá (Cao → Thấp)</option>
+                  <option value="perf-asc">Điểm đánh giá (Thấp → Cao)</option>
                 </select>
               </div>
             </div>
@@ -732,7 +769,7 @@ export default function AdminView({
                       </td>
                       <td className="p-3.5 text-center">
                         <div className="font-bold text-gray-800">{std.totalHours} giờ</div>
-                        <div className="text-amber-600 font-extrabold text-[11px] mt-0.5">BTC: {std.totalPerformanceScore ?? 0}đ</div>
+                        <div className="text-amber-600 font-extrabold text-[11px] mt-0.5">{std.totalPerformanceScore ?? 0}đ</div>
                       </td>
                       <td className="p-3.5">
                         {std.status === 'active' && (
@@ -1467,6 +1504,18 @@ export default function AdminView({
                                   Điểm danh & Chấm điểm
                                 </button>
                               )}
+                              {reg.status === 'completed' && (
+                                <button
+                                  onClick={() => {
+                                    setViewingCampRegsId(null);
+                                    setActiveMenu('reports');
+                                    setSelectedEvaluationReg(reg);
+                                  }}
+                                  className="px-2 py-1 text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg font-bold text-[10px] transition-all flex items-center gap-0.5 cursor-pointer"
+                                >
+                                  Sửa điểm
+                                </button>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -1824,7 +1873,7 @@ export default function AdminView({
                     <span className="text-base font-bold text-emerald-700">{selectedStudentDetail.totalScore} Điểm</span>
                   </div>
                   <div className="bg-amber-50/50 p-3 rounded-xl border border-amber-100 text-center">
-                    <span className="text-[10px] text-gray-500 block mb-0.5">Tổng điểm BTC đánh giá</span>
+                    <span className="text-[10px] text-gray-500 block mb-0.5">Tổng điểm đánh giá</span>
                     <span className="text-base font-bold text-amber-700">{selectedStudentDetail.totalPerformanceScore ?? 0} Điểm</span>
                   </div>
                   <div className="bg-blue-50/50 p-3 rounded-xl border border-blue-100 text-center">

@@ -509,10 +509,10 @@ export default function StudentView({
                 </div>
               </div>
 
-              {/* Progress bar Tổng điểm Ban tổ chức đánh giá */}
+              {/* Progress bar Tổng điểm đánh giá */}
               <div className="space-y-2">
                 <div className="flex justify-between text-xs">
-                  <span className="text-gray-500 font-medium">Tổng điểm Ban tổ chức đánh giá</span>
+                  <span className="text-gray-500 font-medium">Tổng điểm đánh giá</span>
                   <span className="font-bold text-amber-600">{activeStudent.totalPerformanceScore ?? 0} Điểm</span>
                 </div>
                 <div className="w-full h-2.5 bg-gray-100 rounded-full overflow-hidden">
@@ -785,7 +785,7 @@ export default function StudentView({
                             <div className="mt-2 flex items-center gap-3 text-xs text-gray-500 bg-gray-50 p-2 rounded-lg">
                               <span>Chuyên cần: <strong className="text-emerald-600">{reg.attendanceStatus === 'present' ? 'Có mặt' : reg.attendanceStatus}</strong></span>
                               {reg.performanceScore && (
-                                <span>Đánh giá BTC: <strong className="text-amber-600">{reg.performanceScore}/10</strong></span>
+                                <span>Đánh giá: <strong className="text-amber-600">{reg.performanceScore}/10</strong></span>
                               )}
                             </div>
                           )}
