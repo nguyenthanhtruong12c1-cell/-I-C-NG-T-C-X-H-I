@@ -667,9 +667,18 @@ export default function App() {
     try {
       const batch = writeBatch(db);
       batch.set(doc(db, 'registrations', newRegistration.id), newRegistration);
-      batch.update(doc(db, 'campaigns', campaignId), {
-        slotsRegistered: (campaign.slotsRegistered || 0) + 1
-      });
+      
+      const newSlotsRegistered = (campaign.slotsRegistered || 0) + 1;
+      const campaignUpdates: any = {
+        slotsRegistered: newSlotsRegistered
+      };
+
+      // Automatically stop/pause recruitment if target is fully reached
+      if (newSlotsRegistered >= campaign.slotsTotal) {
+        campaignUpdates.status = 'paused';
+      }
+
+      batch.update(doc(db, 'campaigns', campaignId), campaignUpdates);
       await batch.commit();
     } catch (error) {
       console.error('Error registering campaign:', error);
@@ -697,9 +706,17 @@ export default function App() {
       const batch = writeBatch(db);
       batch.delete(doc(db, 'registrations', regId));
       if (campaign) {
-        batch.update(doc(db, 'campaigns', reg.campaignId), {
-          slotsRegistered: Math.max(0, (campaign.slotsRegistered || 0) - 1)
-        });
+        const newSlotsRegistered = Math.max(0, (campaign.slotsRegistered || 0) - 1);
+        const campaignUpdates: any = {
+          slotsRegistered: newSlotsRegistered
+        };
+
+        // If the campaign was paused and now has slots available, automatically open it back up
+        if (campaign.status === 'paused' && newSlotsRegistered < campaign.slotsTotal) {
+          campaignUpdates.status = 'open';
+        }
+
+        batch.update(doc(db, 'campaigns', reg.campaignId), campaignUpdates);
       }
       await batch.commit();
     } catch (error) {
@@ -711,8 +728,46 @@ export default function App() {
   // ADMIN ACTIONS
   // Approve or Reject student registration
   const handleApproveRegistration = async (regId: string, status: 'approved' | 'rejected') => {
+    const reg = registrations.find(r => r.id === regId);
+    if (!reg) return;
+
     try {
-      await updateDoc(doc(db, 'registrations', regId), { status });
+      const batch = writeBatch(db);
+      batch.update(doc(db, 'registrations', regId), { status });
+
+      const campaign = campaigns.find(c => c.id === reg.campaignId);
+      if (campaign) {
+        // If transitioning from non-rejected to rejected: free up slot
+        if (status === 'rejected' && reg.status !== 'rejected') {
+          const newSlotsRegistered = Math.max(0, (campaign.slotsRegistered || 0) - 1);
+          const campaignUpdates: any = {
+            slotsRegistered: newSlotsRegistered
+          };
+
+          // If campaign was paused and now has slots, automatically open it back up
+          if (campaign.status === 'paused' && newSlotsRegistered < campaign.slotsTotal) {
+            campaignUpdates.status = 'open';
+          }
+
+          batch.update(doc(db, 'campaigns', reg.campaignId), campaignUpdates);
+        }
+        // If transitioning from rejected back to approved/pending: occupy slot
+        else if (status === 'approved' && reg.status === 'rejected') {
+          const newSlotsRegistered = (campaign.slotsRegistered || 0) + 1;
+          const campaignUpdates: any = {
+            slotsRegistered: newSlotsRegistered
+          };
+
+          // Automatically stop/pause recruitment if target is fully reached
+          if (newSlotsRegistered >= campaign.slotsTotal) {
+            campaignUpdates.status = 'paused';
+          }
+
+          batch.update(doc(db, 'campaigns', reg.campaignId), campaignUpdates);
+        }
+      }
+
+      await batch.commit();
     } catch (error) {
       console.error('Error approving registration:', error);
       handleFirestoreError(error, OperationType.UPDATE, `registrations/${regId}`);
@@ -898,9 +953,29 @@ export default function App() {
           batch.delete(doc(db, 'students', studentId));
           
           const studentRegs = registrations.filter(r => r.studentId === studentId);
+          const campaignsToUpdate: Record<string, number> = {};
+
           studentRegs.forEach(reg => {
             batch.delete(doc(db, 'registrations', reg.id));
+            if (reg.status !== 'rejected') {
+              campaignsToUpdate[reg.campaignId] = (campaignsToUpdate[reg.campaignId] || 0) + 1;
+            }
           });
+
+          // Decrement slotsRegistered for each campaign
+          for (const [campId, count] of Object.entries(campaignsToUpdate)) {
+            const campaign = campaigns.find(c => c.id === campId);
+            if (campaign) {
+              const newSlotsRegistered = Math.max(0, (campaign.slotsRegistered || 0) - count);
+              const campaignUpdates: any = {
+                slotsRegistered: newSlotsRegistered
+              };
+              if (campaign.status === 'paused' && newSlotsRegistered < campaign.slotsTotal) {
+                campaignUpdates.status = 'open';
+              }
+              batch.update(doc(db, 'campaigns', campId), campaignUpdates);
+            }
+          }
           
           await batch.commit();
           setConfirmModal(null);

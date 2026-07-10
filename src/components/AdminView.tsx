@@ -636,76 +636,78 @@ export default function AdminView({
             )}
 
             {/* Trình tìm kiếm & Bộ lọc khoa */}
-            <div className="flex flex-col sm:flex-row gap-3">
-              <div className="relative flex-1">
+            <div className="flex flex-col lg:flex-row gap-3 lg:items-center justify-between">
+              <div className="relative flex-1 min-w-[280px] lg:max-w-md">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                 <input
                   type="text"
                   placeholder="Tìm kiếm theo Tên sinh viên, MSSV..."
                   value={studentSearch}
                   onChange={(e) => setStudentSearch(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#00529C]/15 text-xs"
+                  className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#00529C]/15 text-xs font-medium"
                 />
               </div>
 
-              <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs">
-                <Filter className="w-3.5 h-3.5 text-gray-500" />
-                <span className="text-gray-500">Khoa:</span>
-                <select
-                  value={studentFacultyFilter}
-                  onChange={(e) => setStudentFacultyFilter(e.target.value)}
-                  className="bg-transparent border-none font-semibold focus:outline-none text-gray-700 cursor-pointer text-xs"
-                >
-                  <option value="all">Tất cả khoa</option>
-                  {faculties.map((fac) => (
-                    <option key={fac} value={fac}>{fac}</option>
-                  ))}
-                </select>
-              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs">
+                  <Filter className="w-3.5 h-3.5 text-gray-500" />
+                  <span className="text-gray-500">Khoa:</span>
+                  <select
+                    value={studentFacultyFilter}
+                    onChange={(e) => setStudentFacultyFilter(e.target.value)}
+                    className="bg-transparent border-none font-semibold focus:outline-none text-gray-700 cursor-pointer text-xs"
+                  >
+                    <option value="all">Tất cả khoa</option>
+                    {faculties.map((fac) => (
+                      <option key={fac} value={fac}>{fac}</option>
+                    ))}
+                  </select>
+                </div>
 
-              <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs">
-                <Filter className="w-3.5 h-3.5 text-gray-500" />
-                <span className="text-gray-500">Hình thức:</span>
-                <select
-                  value={studentFormatFilter}
-                  onChange={(e) => setStudentFormatFilter(e.target.value)}
-                  className="bg-transparent border-none font-semibold focus:outline-none text-gray-700 cursor-pointer text-xs"
-                >
-                  <option value="all">Tất cả hình thức</option>
-                  <option value="Trực tiếp">Trực tiếp</option>
-                  <option value="Trực tuyến">Trực tuyến</option>
-                </select>
-              </div>
+                <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs">
+                  <Filter className="w-3.5 h-3.5 text-gray-500" />
+                  <span className="text-gray-500">Hình thức:</span>
+                  <select
+                    value={studentFormatFilter}
+                    onChange={(e) => setStudentFormatFilter(e.target.value)}
+                    className="bg-transparent border-none font-semibold focus:outline-none text-gray-700 cursor-pointer text-xs"
+                  >
+                    <option value="all">Tất cả hình thức</option>
+                    <option value="Trực tiếp">Trực tiếp</option>
+                    <option value="Trực tuyến">Trực tuyến</option>
+                  </select>
+                </div>
 
-              <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs">
-                <Filter className="w-3.5 h-3.5 text-gray-500" />
-                <span className="text-gray-500">Trạng thái:</span>
-                <select
-                  value={studentStatusFilter}
-                  onChange={(e) => setStudentStatusFilter(e.target.value)}
-                  className="bg-transparent border-none font-semibold focus:outline-none text-gray-700 cursor-pointer text-xs"
-                >
-                  <option value="all">Tất cả trạng thái</option>
-                  <option value="pending">Chờ phê duyệt</option>
-                  <option value="active">Đang hoạt động</option>
-                  <option value="locked">Bị khóa sổ / Từ chối</option>
-                </select>
-              </div>
+                <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs">
+                  <Filter className="w-3.5 h-3.5 text-gray-500" />
+                  <span className="text-gray-500">Trạng thái:</span>
+                  <select
+                    value={studentStatusFilter}
+                    onChange={(e) => setStudentStatusFilter(e.target.value)}
+                    className="bg-transparent border-none font-semibold focus:outline-none text-gray-700 cursor-pointer text-xs"
+                  >
+                    <option value="all">Tất cả trạng thái</option>
+                    <option value="pending">Chờ phê duyệt</option>
+                    <option value="active">Đang hoạt động</option>
+                    <option value="locked">Bị khóa sổ / Từ chối</option>
+                  </select>
+                </div>
 
-              <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs">
-                <ArrowUpDown className="w-3.5 h-3.5 text-[#00529C]" />
-                <span className="text-gray-500">Sắp xếp theo điểm:</span>
-                <select
-                  value={studentSortOrder}
-                  onChange={(e: any) => setStudentSortOrder(e.target.value)}
-                  className="bg-transparent border-none font-semibold focus:outline-none text-gray-700 cursor-pointer text-xs"
-                >
-                  <option value="none">Không sắp xếp</option>
-                  <option value="score-desc">Điểm chiến dịch (Cao → Thấp)</option>
-                  <option value="score-asc">Điểm chiến dịch (Thấp → Cao)</option>
-                  <option value="perf-desc">Điểm đánh giá (Cao → Thấp)</option>
-                  <option value="perf-asc">Điểm đánh giá (Thấp → Cao)</option>
-                </select>
+                <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs">
+                  <ArrowUpDown className="w-3.5 h-3.5 text-[#00529C]" />
+                  <span className="text-gray-500">Sắp xếp theo điểm:</span>
+                  <select
+                    value={studentSortOrder}
+                    onChange={(e: any) => setStudentSortOrder(e.target.value)}
+                    className="bg-transparent border-none font-semibold focus:outline-none text-gray-700 cursor-pointer text-xs"
+                  >
+                    <option value="none">Không sắp xếp</option>
+                    <option value="score-desc">Điểm chiến dịch (Cao → Thấp)</option>
+                    <option value="score-asc">Điểm chiến dịch (Thấp → Cao)</option>
+                    <option value="perf-desc">Điểm đánh giá (Cao → Thấp)</option>
+                    <option value="perf-asc">Điểm đánh giá (Thấp → Cao)</option>
+                  </select>
+                </div>
               </div>
             </div>
 
