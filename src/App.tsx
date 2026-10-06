@@ -1022,6 +1022,76 @@ export default function App() {
     });
   };
 
+  // Admin delete registration for an activity
+  const handleAdminDeleteRegistration = (regId: string) => {
+    const reg = registrations.find(r => r.id === regId);
+    if (!reg) return;
+
+    const campaign = campaigns.find(c => c.id === reg.campaignId);
+    const student = students.find(s => s.id === reg.studentId);
+    const studentName = reg.studentName || (student ? student.name : 'sinh viên');
+    const campTitle = campaign ? campaign.title : (reg.campaignTitle || 'hoạt động');
+
+    setConfirmModal({
+      title: 'Xác nhận xóa thành viên khỏi hoạt động',
+      message: `Bạn có chắc muốn xóa thành viên "${studentName}" khỏi hoạt động "${campTitle}"? Lượt đăng ký tham gia sẽ bị xóa và giải phóng chỉ tiêu tuyển của hoạt động.`,
+      onConfirm: async () => {
+        try {
+          const batch = writeBatch(db);
+          batch.delete(doc(db, 'registrations', regId));
+
+          if (campaign && reg.status !== 'rejected') {
+            const newSlotsRegistered = Math.max(0, (campaign.slotsRegistered || 0) - 1);
+            const campaignUpdates: any = {
+              slotsRegistered: newSlotsRegistered
+            };
+
+            // If campaign was paused and now has slots available, automatically open it back up
+            if (campaign.status === 'paused' && newSlotsRegistered < campaign.slotsTotal) {
+              campaignUpdates.status = 'open';
+            }
+
+            batch.update(doc(db, 'campaigns', campaign.id), campaignUpdates);
+          }
+
+          // If the registration was completed, safely revert the awarded hours, score, and performance score
+          if (reg.status === 'completed' && student) {
+            let scoreToDeduct = 0;
+            let hoursToDeduct = 0;
+            if (reg.attendanceStatus === 'present' && campaign) {
+              if (campaign.scoreType === 'Ngày') {
+                scoreToDeduct = campaign.score || 0;
+              } else {
+                hoursToDeduct = campaign.score || 0;
+              }
+            }
+            const perfScoreToDeduct = reg.performanceScore || 0;
+
+            const updatedCtxhAccumulated = Math.max(0, (student.ctxhAccumulated || 0) - scoreToDeduct);
+            const updatedCtxhMissing = (student.ctxhMissing || 0) + scoreToDeduct;
+            const updatedTotalPerformanceScore = Math.max(0, (student.totalPerformanceScore || 0) - perfScoreToDeduct);
+            const updatedTotalScore = Math.max(0, (student.totalScore || 0) - scoreToDeduct);
+            const updatedTotalHours = Math.max(0, (student.totalHours || 0) - hoursToDeduct);
+
+            batch.update(doc(db, 'students', student.id), {
+              totalScore: updatedTotalScore,
+              totalHours: updatedTotalHours,
+              ctxhAccumulated: updatedCtxhAccumulated,
+              ctxhMissing: updatedCtxhMissing,
+              totalPerformanceScore: updatedTotalPerformanceScore
+            });
+          }
+
+          await batch.commit();
+          setConfirmModal(null);
+        } catch (error) {
+          console.error('Error deleting registration:', error);
+          handleFirestoreError(error, OperationType.DELETE, `registrations/${regId}`);
+        }
+      }
+    });
+  };
+
   // Reset state helper
   const handleResetDemoState = () => {
     setConfirmModal({
@@ -1651,6 +1721,7 @@ export default function App() {
                 onCompleteCampaignRegistration={handleCompleteCampaignRegistration}
                 onDeleteStudent={handleDeleteStudent}
                 onDeleteCampaign={handleDeleteCampaign}
+                onDeleteRegistration={handleAdminDeleteRegistration}
                 onUpdateCampaignStatus={handleUpdateCampaignStatus}
                 onApproveStudent={handleApproveStudent}
                 onDownloadDocx={handleDownloadDocx}

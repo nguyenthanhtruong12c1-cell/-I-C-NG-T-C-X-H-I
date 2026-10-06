@@ -32,7 +32,9 @@ import {
   ExternalLink,
   FileText,
   ArrowUpDown,
-  RefreshCw
+  RefreshCw,
+  ArrowLeft,
+  ChevronRight
 } from 'lucide-react';
 
 interface AdminViewProps {
@@ -47,6 +49,7 @@ interface AdminViewProps {
   onCompleteCampaignRegistration: (regId: string, attendance: 'present' | 'absent' | 'excused', score: number) => void;
   onDeleteStudent: (studentId: string) => void;
   onDeleteCampaign: (campaignId: string) => void;
+  onDeleteRegistration?: (regId: string) => void;
   onUpdateCampaignStatus?: (campaignId: string, status: 'open' | 'paused' | 'completed') => void;
   onApproveStudent: (studentId: string, approved: boolean) => void;
   onDownloadDocx: (student: Student) => void;
@@ -65,6 +68,7 @@ export default function AdminView({
   onCompleteCampaignRegistration,
   onDeleteStudent,
   onDeleteCampaign,
+  onDeleteRegistration,
   onUpdateCampaignStatus,
   onApproveStudent,
   onDownloadDocx,
@@ -109,6 +113,13 @@ export default function AdminView({
   const [selectedEvaluationReg, setSelectedEvaluationReg] = useState<Registration | null>(null);
   const [evalAttendance, setEvalAttendance] = useState<'present' | 'absent' | 'excused'>('present');
   const [evalScore, setEvalScore] = useState<number>(9);
+
+  // Reports / Activity-based Evaluation states
+  const [selectedEvalCampaignId, setSelectedEvalCampaignId] = useState<string | null>(null);
+  const [campaignEvalSearch, setCampaignEvalSearch] = useState('');
+  const [campaignEvalDeptFilter, setCampaignEvalDeptFilter] = useState('all');
+  const [evalMemberSearch, setEvalMemberSearch] = useState('');
+  const [evalMemberStatusFilter, setEvalMemberStatusFilter] = useState<'all' | 'approved' | 'completed' | 'pending' | 'rejected'>('all');
 
   useEffect(() => {
     if (selectedEvaluationReg) {
@@ -1036,64 +1047,518 @@ export default function AdminView({
           </div>
         )}
 
-        {/* VIEW 4: ASSESSMENT & GRADING */}
+        {/* VIEW 4: ASSESSMENT & GRADING - DIVIDED BY ACTIVITY */}
         {activeMenu === 'reports' && (
-          <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-xs space-y-4 animate-fade-in">
-            <div>
-              <h3 className="text-base font-bold text-gray-800">Cổng điểm danh & Đánh giá hiệu suất</h3>
-              <p className="text-xs text-gray-400 mt-0.5">Tiến hành điểm danh, ghi nhận giờ và phê duyệt phát chứng chỉ số sau khi hoàn tất chiến dịch</p>
-            </div>
+          <div className="space-y-4 animate-fade-in">
+            {!selectedEvalCampaignId ? (
+              // SUBVIEW 4A: LIST OF ACTIVITIES
+              <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-xs space-y-6">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-100 pb-5">
+                  <div>
+                    <h3 className="text-base font-bold text-gray-800 flex items-center gap-2">
+                      <Award className="w-5 h-5 text-[#00529C]" />
+                      Đánh giá & Chấm điểm theo Hoạt động
+                    </h3>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      Chọn hoạt động/chiến dịch bên dưới để xem danh sách thành viên đăng ký, tiến hành điểm danh, chấm điểm hiệu suất và quản lý thành viên.
+                    </p>
+                  </div>
+                  
+                  {/* Summary Metric Badges */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="px-3 py-1.5 bg-blue-50 text-[#00529C] border border-blue-200 rounded-xl text-xs font-semibold">
+                      Tổng: <strong>{campaigns.length}</strong> hoạt động
+                    </span>
+                    <span className="px-3 py-1.5 bg-amber-50 text-amber-800 border border-amber-200 rounded-xl text-xs font-semibold flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+                      Cần chấm điểm: <strong>{gradableRegs.length}</strong> sinh viên
+                    </span>
+                  </div>
+                </div>
 
-            {gradableRegs.length === 0 ? (
-              <div className="text-center py-12 border border-dashed border-gray-200 rounded-xl">
-                <AlertCircle className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                <p className="text-sm text-gray-500 font-medium">Không có sinh viên nào cần đánh giá vào lúc này.</p>
-                <p className="text-xs text-gray-400 mt-1">Duyệt sinh viên tham gia chiến dịch ở phần "Dashboard Tổng quan" trước.</p>
+                {/* Search & Filter Bar */}
+                <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
+                  <div className="relative flex-1 max-w-md">
+                    <Search className="absolute left-3.5 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                    <input
+                      type="text"
+                      placeholder="Tìm kiếm hoạt động theo tên, địa điểm..."
+                      value={campaignEvalSearch}
+                      onChange={(e) => setCampaignEvalSearch(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#00529C]/15 text-xs font-medium"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs">
+                      <Filter className="w-3.5 h-3.5 text-gray-500" />
+                      <span className="text-gray-500">Đơn vị:</span>
+                      <select
+                        value={campaignEvalDeptFilter}
+                        onChange={(e) => setCampaignEvalDeptFilter(e.target.value)}
+                        className="bg-transparent border-none font-semibold focus:outline-none text-gray-700 cursor-pointer text-xs"
+                      >
+                        <option value="all">Tất cả đơn vị</option>
+                        <option value="Đoàn Thanh niên">Đoàn Thanh niên</option>
+                        <option value="Hội Sinh viên">Hội Sinh viên</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Campaigns Grid */}
+                {(() => {
+                  const evalCampaigns = campaigns.filter(c => {
+                    const matchesSearch = c.title.toLowerCase().includes(campaignEvalSearch.toLowerCase()) ||
+                                          c.location.toLowerCase().includes(campaignEvalSearch.toLowerCase());
+                    const matchesDept = campaignEvalDeptFilter === 'all' || c.department === campaignEvalDeptFilter;
+                    return matchesSearch && matchesDept;
+                  });
+
+                  if (evalCampaigns.length === 0) {
+                    return (
+                      <div className="text-center py-12 border border-dashed border-gray-200 rounded-2xl">
+                        <AlertCircle className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                        <p className="text-sm text-gray-500 font-medium">Không tìm thấy hoạt động nào phù hợp.</p>
+                        <p className="text-xs text-gray-400 mt-1">Vui lòng thử tìm kiếm với từ khóa khác.</p>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {evalCampaigns.map((camp) => {
+                        const campRegs = registrations.filter(r => r.campaignId === camp.id);
+                        const approvedCount = campRegs.filter(r => r.status === 'approved').length;
+                        const completedCount = campRegs.filter(r => r.status === 'completed').length;
+                        const pendingCount = campRegs.filter(r => r.status === 'pending').length;
+                        const totalRegs = campRegs.length;
+
+                        return (
+                          <div
+                            key={camp.id}
+                            className="bg-white border border-gray-200 hover:border-[#00529C]/40 rounded-2xl p-5 shadow-xs hover:shadow-md transition-all flex flex-col justify-between group"
+                          >
+                            <div className="space-y-3">
+                              {/* Badges */}
+                              <div className="flex items-center justify-between gap-2 flex-wrap">
+                                <span className={`px-2.5 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider text-white ${
+                                  camp.department === 'Đoàn Thanh niên' ? 'bg-[#00529C]' : 'bg-[#00AEEF]'
+                                }`}>
+                                  {camp.department}
+                                </span>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="flex items-center font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md text-[10px]">
+                                    <Award className="w-3 h-3 mr-1" />
+                                    +{camp.score} {camp.scoreType}
+                                  </span>
+                                  <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded-md font-semibold text-[10px]">
+                                    {camp.format || 'Trực tiếp'}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Title */}
+                              <h4 className="font-bold text-gray-800 text-sm leading-snug line-clamp-2 group-hover:text-[#00529C] transition-colors">
+                                {camp.title}
+                              </h4>
+
+                              {/* Date & Location */}
+                              <div className="space-y-1.5 text-xs text-gray-500 pt-1 border-t border-gray-100">
+                                <div className="flex items-center gap-2">
+                                  <Calendar className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                                  <span className="truncate">{camp.date}</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <MapPin className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                                  <span className="truncate">{camp.location}</span>
+                                </div>
+                              </div>
+
+                              {/* Registration stats */}
+                              <div className="pt-2 border-t border-gray-100">
+                                <div className="flex items-center justify-between text-[11px] font-medium text-gray-500 mb-1.5">
+                                  <span>Đã đăng ký: <strong>{totalRegs}</strong> / {camp.slotsTotal} suất</span>
+                                  {camp.status === 'paused' ? (
+                                    <span className="text-amber-600 font-bold text-[10px] bg-amber-50 px-1.5 py-0.5 rounded">Đã đủ chỉ tiêu</span>
+                                  ) : (
+                                    <span className="text-emerald-600 font-bold text-[10px] bg-emerald-50 px-1.5 py-0.5 rounded">Đang mở tuyển</span>
+                                  )}
+                                </div>
+
+                                <div className="grid grid-cols-3 gap-1.5 text-[10px] pt-1">
+                                  <div className={`p-1.5 rounded-lg text-center ${
+                                    approvedCount > 0 
+                                      ? 'bg-amber-50 text-amber-800 border border-amber-200 font-bold' 
+                                      : 'bg-gray-50 text-gray-400 font-medium'
+                                  }`}>
+                                    <div>Cần chấm</div>
+                                    <div className="text-xs font-bold">{approvedCount}</div>
+                                  </div>
+                                  <div className={`p-1.5 rounded-lg text-center ${
+                                    completedCount > 0 
+                                      ? 'bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold' 
+                                      : 'bg-gray-50 text-gray-400 font-medium'
+                                  }`}>
+                                    <div>Đã chấm</div>
+                                    <div className="text-xs font-bold">{completedCount}</div>
+                                  </div>
+                                  <div className={`p-1.5 rounded-lg text-center ${
+                                    pendingCount > 0 
+                                      ? 'bg-blue-50 text-blue-800 border border-blue-200 font-bold' 
+                                      : 'bg-gray-50 text-gray-400 font-medium'
+                                  }`}>
+                                    <div>Chờ duyệt</div>
+                                    <div className="text-xs font-bold">{pendingCount}</div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* View button */}
+                            <button
+                              onClick={() => {
+                                setSelectedEvalCampaignId(camp.id);
+                                setEvalMemberSearch('');
+                                setEvalMemberStatusFilter('all');
+                              }}
+                              className="w-full mt-4 py-2.5 px-4 bg-gradient-to-r from-[#00529C] to-[#00AEEF] hover:from-[#00417C] hover:to-[#0098D4] text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-xs hover:shadow transition-all cursor-pointer"
+                            >
+                              <Users className="w-4 h-4" />
+                              <span>Xem danh sách đăng ký ({totalRegs})</span>
+                              <ChevronRight className="w-4 h-4" />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
               </div>
             ) : (
-              <div className="overflow-x-auto border border-gray-100 rounded-xl">
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead>
-                    <tr className="bg-gray-50 text-gray-400 font-bold border-b border-gray-100">
-                      <th className="p-3">Họ Tên Sinh Viên</th>
-                      <th className="p-3">Hoạt động / Chiến dịch</th>
-                      <th className="p-3 text-center">Trạng thái duyệt</th>
-                      <th className="p-3 text-right">Hành động</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {gradableRegs.map((reg) => {
-                      const studentObj = students.find(s => s.id === reg.studentId);
-                      const mssv = studentObj ? studentObj.studentId : reg.studentId;
-                      return (
-                        <tr key={reg.id} className="hover:bg-gray-50/40">
-                          <td className="p-3">
-                            <div className="font-semibold text-gray-800">{reg.studentName}</div>
-                            <div className="text-gray-400 text-[10px] mt-0.5">MSSV: {mssv} • {reg.studentClass} • {reg.studentFaculty}</div>
-                          </td>
-                        <td className="p-3">
-                          <div className="font-medium text-gray-700">{reg.campaignTitle}</div>
-                          <div className="text-gray-400 text-[10px] mt-0.5">Thời gian tuyển hè 2026</div>
-                        </td>
-                        <td className="p-3 text-center">
-                          <span className="bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-0.5 rounded-md font-medium text-[10px]">
-                            Đã phê duyệt tham gia
+              // SUBVIEW 4B: PARTICIPANTS IN SELECTED ACTIVITY
+              (() => {
+                const selectedCamp = campaigns.find(c => c.id === selectedEvalCampaignId);
+                if (!selectedCamp) {
+                  return (
+                    <div className="bg-white rounded-2xl p-8 text-center border border-gray-100">
+                      <p className="text-gray-500 text-sm">Không tìm thấy hoạt động này (có thể đã bị xóa).</p>
+                      <button
+                        onClick={() => setSelectedEvalCampaignId(null)}
+                        className="mt-4 px-4 py-2 bg-[#00529C] text-white rounded-xl text-xs font-bold cursor-pointer"
+                      >
+                        Quay lại danh sách hoạt động
+                      </button>
+                    </div>
+                  );
+                }
+
+                const campRegs = registrations.filter(r => r.campaignId === selectedCamp.id);
+                const approvedCount = campRegs.filter(r => r.status === 'approved').length;
+                const completedCount = campRegs.filter(r => r.status === 'completed').length;
+                const pendingCount = campRegs.filter(r => r.status === 'pending').length;
+                const rejectedCount = campRegs.filter(r => r.status === 'rejected').length;
+
+                const filteredCampRegs = campRegs.filter(reg => {
+                  const studentObj = students.find(s => s.id === reg.studentId);
+                  const mssv = studentObj ? studentObj.studentId : reg.studentId;
+                  const matchesSearch = 
+                    reg.studentName.toLowerCase().includes(evalMemberSearch.toLowerCase()) ||
+                    mssv.toLowerCase().includes(evalMemberSearch.toLowerCase()) ||
+                    (reg.studentClass && reg.studentClass.toLowerCase().includes(evalMemberSearch.toLowerCase())) ||
+                    (reg.studentFaculty && reg.studentFaculty.toLowerCase().includes(evalMemberSearch.toLowerCase()));
+
+                  const matchesStatus = 
+                    evalMemberStatusFilter === 'all' || 
+                    reg.status === evalMemberStatusFilter;
+
+                  return matchesSearch && matchesStatus;
+                });
+
+                return (
+                  <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-xs space-y-5">
+                    {/* Navigation Header */}
+                    <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-gray-100 pb-5">
+                      <div className="space-y-1.5">
+                        <button
+                          onClick={() => setSelectedEvalCampaignId(null)}
+                          className="inline-flex items-center gap-1.5 text-xs font-bold text-[#00529C] hover:text-[#003B70] hover:underline cursor-pointer mb-1 transition-colors"
+                        >
+                          <ArrowLeft className="w-4 h-4" />
+                          Quay lại danh sách hoạt động
+                        </button>
+                        
+                        <div className="flex items-center gap-2.5 flex-wrap">
+                          <h3 className="text-base font-bold text-gray-800">
+                            {selectedCamp.title}
+                          </h3>
+                          <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider text-white ${
+                            selectedCamp.department === 'Đoàn Thanh niên' ? 'bg-[#00529C]' : 'bg-[#00AEEF]'
+                          }`}>
+                            {selectedCamp.department}
                           </span>
-                        </td>
-                        <td className="p-3 text-right">
-                          <button
-                            onClick={() => setSelectedEvaluationReg(reg)}
-                            className="px-3 py-1.5 bg-gradient-to-r from-[#00529C] to-[#00AEEF] text-white rounded-xl text-xs font-bold shadow-xs hover:shadow transition-all"
-                            id={`btn-evaluate-${reg.id}`}
+                          <span className="flex items-center font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md text-[10px]">
+                            <Award className="w-3 h-3 mr-1" />
+                            +{selectedCamp.score} {selectedCamp.scoreType}
+                          </span>
+                        </div>
+                        
+                        <div className="flex items-center gap-3 text-xs text-gray-500 flex-wrap">
+                          <span className="flex items-center gap-1">
+                            <Calendar className="w-3.5 h-3.5 text-gray-400" />
+                            {selectedCamp.date}
+                          </span>
+                          <span>•</span>
+                          <span className="flex items-center gap-1">
+                            <MapPin className="w-3.5 h-3.5 text-gray-400" />
+                            {selectedCamp.location}
+                          </span>
+                          <span>•</span>
+                          <span>Chỉ tiêu: <strong>{selectedCamp.slotsRegistered || 0}/{selectedCamp.slotsTotal}</strong> suất</span>
+                        </div>
+                      </div>
+
+                      {/* Header Actions: Switcher & Export */}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {/* Activity quick switcher */}
+                        <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-xl px-2.5 py-1.5 text-xs">
+                          <span className="text-gray-400 text-[11px] font-medium hidden sm:inline">Chuyển:</span>
+                          <select
+                            value={selectedCamp.id}
+                            onChange={(e) => {
+                              setSelectedEvalCampaignId(e.target.value);
+                              setEvalMemberSearch('');
+                              setEvalMemberStatusFilter('all');
+                            }}
+                            className="bg-transparent border-none font-semibold focus:outline-none text-gray-700 cursor-pointer text-xs max-w-[160px] truncate"
                           >
-                            Điểm danh & Chấm điểm
+                            {campaigns.map(c => (
+                              <option key={c.id} value={c.id}>{c.title}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <button
+                          onClick={() => handleExportCampaignParticipants(selectedCamp.id)}
+                          className="px-3 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                          title="Tải danh sách đăng ký (.csv)"
+                        >
+                          <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                          <span className="hidden sm:inline">Xuất Excel/CSV</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Filter Tabs & Search */}
+                    <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+                      {/* Status Filter Tabs */}
+                      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 text-xs">
+                        <button
+                          onClick={() => setEvalMemberStatusFilter('all')}
+                          className={`px-3 py-1.5 rounded-xl font-bold transition-all whitespace-nowrap cursor-pointer ${
+                            evalMemberStatusFilter === 'all'
+                              ? 'bg-[#00529C] text-white shadow-xs'
+                              : 'bg-gray-50 hover:bg-gray-100 text-gray-600 border border-gray-200'
+                          }`}
+                        >
+                          Tất cả ({campRegs.length})
+                        </button>
+                        <button
+                          onClick={() => setEvalMemberStatusFilter('approved')}
+                          className={`px-3 py-1.5 rounded-xl font-bold transition-all whitespace-nowrap cursor-pointer ${
+                            evalMemberStatusFilter === 'approved'
+                              ? 'bg-amber-600 text-white shadow-xs'
+                              : 'bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200'
+                          }`}
+                        >
+                          Cần chấm điểm ({approvedCount})
+                        </button>
+                        <button
+                          onClick={() => setEvalMemberStatusFilter('completed')}
+                          className={`px-3 py-1.5 rounded-xl font-bold transition-all whitespace-nowrap cursor-pointer ${
+                            evalMemberStatusFilter === 'completed'
+                              ? 'bg-emerald-600 text-white shadow-xs'
+                              : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200'
+                          }`}
+                        >
+                          Đã chấm điểm ({completedCount})
+                        </button>
+                        <button
+                          onClick={() => setEvalMemberStatusFilter('pending')}
+                          className={`px-3 py-1.5 rounded-xl font-bold transition-all whitespace-nowrap cursor-pointer ${
+                            evalMemberStatusFilter === 'pending'
+                              ? 'bg-blue-600 text-white shadow-xs'
+                              : 'bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200'
+                          }`}
+                        >
+                          Chờ duyệt ({pendingCount})
+                        </button>
+                        {rejectedCount > 0 && (
+                          <button
+                            onClick={() => setEvalMemberStatusFilter('rejected')}
+                            className={`px-3 py-1.5 rounded-xl font-bold transition-all whitespace-nowrap cursor-pointer ${
+                              evalMemberStatusFilter === 'rejected'
+                                ? 'bg-red-600 text-white shadow-xs'
+                                : 'bg-red-50 hover:bg-red-100 text-red-800 border border-red-200'
+                            }`}
+                          >
+                            Từ chối ({rejectedCount})
                           </button>
-                        </td>
-                      </tr>
-                    ); })}
-                  </tbody>
-                </table>
-              </div>
+                        )}
+                      </div>
+
+                      {/* Search inside campaign */}
+                      <div className="relative min-w-[240px] md:max-w-xs">
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-3.5 h-3.5" />
+                        <input
+                          type="text"
+                          placeholder="Tìm sinh viên theo tên, MSSV, lớp..."
+                          value={evalMemberSearch}
+                          onChange={(e) => setEvalMemberSearch(e.target.value)}
+                          className="w-full pl-9 pr-3.5 py-1.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#00529C]/15 text-xs font-medium"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Registrations Table */}
+                    {filteredCampRegs.length === 0 ? (
+                      <div className="text-center py-12 border border-dashed border-gray-200 rounded-xl">
+                        <AlertCircle className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                        <p className="text-sm text-gray-500 font-medium">Không tìm thấy sinh viên nào theo bộ lọc này.</p>
+                        <p className="text-xs text-gray-400 mt-1">
+                          {campRegs.length === 0 
+                            ? 'Chưa có sinh viên nào đăng ký tham gia hoạt động này.' 
+                            : 'Thử chuyển sang tab "Tất cả" hoặc xóa ô tìm kiếm.'}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto border border-gray-100 rounded-xl">
+                        <table className="w-full text-left border-collapse text-xs">
+                          <thead>
+                            <tr className="bg-gray-50 text-gray-400 font-bold border-b border-gray-100">
+                              <th className="p-3">Họ Tên Sinh Viên</th>
+                              <th className="p-3">Thời gian đăng ký</th>
+                              <th className="p-3 text-center">Trạng thái & Đánh giá</th>
+                              <th className="p-3 text-right">Hành động</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-50">
+                            {filteredCampRegs.map((reg) => {
+                              const studentObj = students.find(s => s.id === reg.studentId);
+                              const mssv = studentObj ? studentObj.studentId : reg.studentId;
+                              return (
+                                <tr key={reg.id} className="hover:bg-gray-50/50">
+                                  {/* Student Info */}
+                                  <td className="p-3">
+                                    <div className="font-semibold text-gray-800">{reg.studentName}</div>
+                                    <div className="text-gray-400 text-[10px] mt-0.5">
+                                      MSSV: <strong className="text-gray-600">{mssv}</strong> • {reg.studentClass} • {reg.studentFaculty}
+                                    </div>
+                                    {studentObj?.phone && (
+                                      <div className="text-gray-400 text-[10px]">SĐT: {studentObj.phone}</div>
+                                    )}
+                                  </td>
+
+                                  {/* Registration Time */}
+                                  <td className="p-3 text-gray-500">
+                                    <span className="font-medium">{reg.registeredAt || 'Gần đây'}</span>
+                                  </td>
+
+                                  {/* Status & Evaluation Details */}
+                                  <td className="p-3 text-center">
+                                    {reg.status === 'pending' && (
+                                      <span className="bg-blue-50 text-blue-700 border border-blue-100 px-2.5 py-1 rounded-md font-semibold text-[10px]">
+                                        Chờ duyệt tham gia
+                                      </span>
+                                    )}
+                                    {reg.status === 'approved' && (
+                                      <span className="bg-amber-50 text-amber-700 border border-amber-200 px-2.5 py-1 rounded-md font-bold text-[10px] inline-flex items-center gap-1">
+                                        <Clock className="w-3 h-3 text-amber-600" />
+                                        Đã duyệt • Cần chấm điểm
+                                      </span>
+                                    )}
+                                    {reg.status === 'completed' && (
+                                      <div className="inline-flex flex-col items-center gap-0.5">
+                                        <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-md font-bold text-[10px] inline-flex items-center gap-1">
+                                          <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                          Đã chấm điểm ({reg.performanceScore ?? 9}/10)
+                                        </span>
+                                        <span className="text-[10px] text-gray-400 font-medium">
+                                          Chuyên cần: {reg.attendanceStatus === 'present' ? 'Có mặt' : reg.attendanceStatus === 'absent' ? 'Vắng' : 'Có phép'}
+                                        </span>
+                                      </div>
+                                    )}
+                                    {reg.status === 'rejected' && (
+                                      <span className="bg-red-50 text-red-700 border border-red-100 px-2.5 py-1 rounded-md font-medium text-[10px]">
+                                        Đã từ chối
+                                      </span>
+                                    )}
+                                  </td>
+
+                                  {/* Action Buttons */}
+                                  <td className="p-3 text-right">
+                                    <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                                      {/* Grading Button */}
+                                      {reg.status === 'approved' && (
+                                        <button
+                                          onClick={() => setSelectedEvaluationReg(reg)}
+                                          className="px-3 py-1.5 bg-gradient-to-r from-[#00529C] to-[#00AEEF] hover:from-[#00417C] hover:to-[#0098D4] text-white rounded-xl text-xs font-bold shadow-xs hover:shadow transition-all cursor-pointer"
+                                          id={`btn-evaluate-${reg.id}`}
+                                        >
+                                          Điểm danh & Chấm điểm
+                                        </button>
+                                      )}
+
+                                      {/* Edit Grading Button */}
+                                      {reg.status === 'completed' && (
+                                        <button
+                                          onClick={() => setSelectedEvaluationReg(reg)}
+                                          className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                                          title="Chỉnh sửa điểm danh & điểm đánh giá"
+                                        >
+                                          Sửa điểm
+                                        </button>
+                                      )}
+
+                                      {/* Pending Quick Approve/Reject */}
+                                      {reg.status === 'pending' && (
+                                        <>
+                                          <button
+                                            onClick={() => onApproveRegistration(reg.id, 'rejected')}
+                                            className="px-2.5 py-1 text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 rounded-xl font-bold text-xs transition-all cursor-pointer"
+                                          >
+                                            Từ chối
+                                          </button>
+                                          <button
+                                            onClick={() => onApproveRegistration(reg.id, 'approved')}
+                                            className="px-2.5 py-1 text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl font-bold text-xs transition-all cursor-pointer"
+                                          >
+                                            Duyệt
+                                          </button>
+                                        </>
+                                      )}
+
+                                      {/* Delete Registered Member from Activity */}
+                                      <button
+                                        onClick={() => onDeleteRegistration && onDeleteRegistration(reg.id)}
+                                        className="p-1.5 text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-xl transition-all cursor-pointer flex items-center gap-1 font-semibold text-xs"
+                                        title="Xóa thành viên khỏi hoạt động này"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                        <span className="hidden sm:inline">Xóa</span>
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()
             )}
           </div>
         )}
@@ -1516,6 +1981,16 @@ export default function AdminView({
                                   className="px-2 py-1 text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg font-bold text-[10px] transition-all flex items-center gap-0.5 cursor-pointer"
                                 >
                                   Sửa điểm
+                                </button>
+                              )}
+                              {onDeleteRegistration && (
+                                <button
+                                  onClick={() => onDeleteRegistration(reg.id)}
+                                  className="p-1 text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg font-bold text-[10px] transition-all flex items-center gap-0.5 cursor-pointer"
+                                  title="Xóa thành viên khỏi hoạt động"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                  <span className="hidden sm:inline">Xóa</span>
                                 </button>
                               )}
                             </div>
