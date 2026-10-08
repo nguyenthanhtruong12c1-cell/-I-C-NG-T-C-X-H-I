@@ -12,7 +12,10 @@ import {
   updateDoc,
   deleteDoc,
   onSnapshot,
-  writeBatch
+  writeBatch,
+  getDocs,
+  query,
+  where
 } from 'firebase/firestore';
 import { 
   GraduationCap, 
@@ -141,6 +144,10 @@ export default function App() {
     const action = params.get('action');
     return action === 'checkin' ? params.get('token') : null;
   });
+
+  // Lock set to prevent concurrent duplicate scans
+  const checkinInProgressRef = useRef<Set<string>>(new Set());
+  const processedTokensRef = useRef<Set<string>>(new Set());
 
   // Firestore Real-time Synchronization
   useEffect(() => {
@@ -358,8 +365,13 @@ export default function App() {
     if (currentUser && role === 'student') {
       const tokenToProcess = pendingCheckinToken;
       setPendingCheckinToken(null);
-      // Clean query parameters from URL
+      // Clean query parameters from URL immediately
       window.history.replaceState({}, document.title, window.location.pathname);
+
+      if (processedTokensRef.current.has(tokenToProcess)) {
+        return;
+      }
+      processedTokensRef.current.add(tokenToProcess);
 
       handleCheckinQR(tokenToProcess).then((res) => {
         setAlertModal({
@@ -1359,13 +1371,14 @@ export default function App() {
   };
 
   // Dynamic QR Code Attendance Check-In (Rotating 20 seconds)
+  // Chỉ cho phép sinh viên đã đăng ký tham gia hoạt động mới quét mã được!
   const handleCheckinQR = async (tokenOrUrl: string): Promise<{ success: boolean; message: string }> => {
     // 1. Validate the 20-second token
     const validation = validateAttendanceToken(tokenOrUrl);
     if (!validation.valid || !validation.campaignId) {
       return {
         success: false,
-        message: validation.reason || 'Mã QR không hợp lệ hoặc đã hết hạn (mã tự động đổi mỗi 20 giây để chống điểm danh hộ).'
+        message: validation.reason || 'Mã QR không hợp lệ hoặc đã hết hạn.'
       };
     }
 
@@ -1387,111 +1400,87 @@ export default function App() {
 
     const student = students.find(s => s.id === currentUser.id || s.studentId === (currentUser as Student).studentId) || (currentUser as Student);
 
-    const nowFormatted = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' + new Date().toLocaleDateString('vi-VN');
+    // Prevent rapid concurrent double-scanning for the same student & campaign
+    const lockKey = `${student.id}_${camp.id}`;
+    if (checkinInProgressRef.current.has(lockKey)) {
+      return {
+        success: false,
+        message: 'Yêu cầu điểm danh đang được xử lý, vui lòng không quét liên tục!'
+      };
+    }
+    checkinInProgressRef.current.add(lockKey);
 
-    // 3. Find registration
-    const reg = registrations.find(r => r.campaignId === camp.id && r.studentId === student.id);
+    try {
+      // 3. Find registration - YÊU CẦU: Chỉ có sinh viên đã đăng ký mới quét mã được
+      let studentRegs = registrations.filter(
+        r => r.campaignId === camp.id && (r.studentId === student.id || r.studentId === student.studentId)
+      );
 
-    // Case A: Student has an existing registration
-    if (reg) {
-      if (reg.status === 'completed' && reg.attendanceStatus === 'present') {
+      // In case local state has not synced yet from Firestore, query directly
+      if (studentRegs.length === 0) {
+        try {
+          const q = query(
+            collection(db, 'registrations'),
+            where('campaignId', '==', camp.id),
+            where('studentId', 'in', [student.id, student.studentId || ''])
+          );
+          const snap = await getDocs(q);
+          if (!snap.empty) {
+            studentRegs = snap.docs.map(d => ({ id: d.id, ...d.data() } as Registration));
+          }
+        } catch (fetchErr) {
+          console.warn('Direct Firestore registration lookup error:', fetchErr);
+        }
+      }
+
+      // Chưa đăng ký tham gia -> Chặn ngay lập tức
+      if (studentRegs.length === 0) {
         return {
-          success: true,
-          message: `Bạn đã điểm danh thành công hoạt động "${camp.title}" trước đó rồi!`
+          success: false,
+          message: `Bạn chưa đăng ký tham gia hoạt động "${camp.title}"! Chỉ những sinh viên đã đăng ký tham gia hoạt động mới có thể quét mã điểm danh.`
         };
       }
 
-      if (reg.status === 'rejected') {
+      // Đã điểm danh trước đó rồi -> Chặn điểm danh trùng lặp
+      const alreadyCheckedIn = studentRegs.some(
+        r => r.attendanceStatus === 'present' || r.status === 'completed' || Boolean(r.attendedAt)
+      );
+
+      if (alreadyCheckedIn) {
+        const attendedReg = studentRegs.find(r => r.attendedAt);
+        const timeInfo = attendedReg?.attendedAt ? ` (lúc ${attendedReg.attendedAt})` : '';
         return {
           success: false,
-          message: `Lượt đăng ký của bạn tại hoạt động "${camp.title}" không được duyệt tham gia.`
+          message: `Bạn đã điểm danh tham gia hoạt động "${camp.title}" trước đó rồi${timeInfo}! Hệ thống đã ghi nhận có mặt, không thể điểm danh thêm lần nữa.`
+        };
+      }
+
+      // Lượt đăng ký bị từ chối
+      const validRegs = studentRegs.filter(r => r.status !== 'rejected');
+      if (validRegs.length === 0) {
+        return {
+          success: false,
+          message: `Lượt đăng ký của bạn tại hoạt động "${camp.title}" không được phê duyệt để tham gia.`
         };
       }
 
       const defaultPerfScore = 10;
       const scoreToAward = camp.scoreType === 'Ngày' ? camp.score : 0;
       const hoursToAward = camp.scoreType !== 'Ngày' ? camp.score : 0;
+      const nowFormatted = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' + new Date().toLocaleDateString('vi-VN');
 
-      try {
-        const batch = writeBatch(db);
-        batch.update(doc(db, 'registrations', reg.id), {
+      const batch = writeBatch(db);
+
+      // Cập nhật tất cả bản ghi đăng ký của sinh viên cho hoạt động này để đồng bộ triệt để
+      studentRegs.forEach(r => {
+        batch.update(doc(db, 'registrations', r.id), {
           status: 'completed',
           attendanceStatus: 'present',
           performanceScore: defaultPerfScore,
           attendedAt: nowFormatted,
           checkinMethod: 'qr_20s'
         });
-
-        const updatedCtxhAccumulated = (student.ctxhAccumulated || 0) + scoreToAward;
-        const updatedCtxhMissing = Math.max(0, (student.ctxhMissing || 0) - scoreToAward);
-        const updatedTotalPerf = (student.totalPerformanceScore || 0) + defaultPerfScore;
-        const updatedTotalScore = (student.totalScore || 0) + scoreToAward;
-        const updatedTotalHours = (student.totalHours || 0) + hoursToAward;
-
-        batch.update(doc(db, 'students', student.id), {
-          ctxhAccumulated: updatedCtxhAccumulated,
-          ctxhMissing: updatedCtxhMissing,
-          totalPerformanceScore: updatedTotalPerf,
-          totalScore: updatedTotalScore,
-          totalHours: updatedTotalHours
-        });
-
-        await batch.commit();
-
-        const unitText = camp.scoreType === 'Ngày' ? `${camp.score} ngày CTXH` : `${camp.score} giờ`;
-        return {
-          success: true,
-          message: `Điểm danh thành công hoạt động "${camp.title}"! Ghi nhận có mặt, tích lũy +${unitText} và +10 điểm đánh giá.`
-        };
-      } catch (err) {
-        console.error('Error completing QR attendance:', err);
-        handleFirestoreError(err, OperationType.WRITE, `registrations/${reg.id}`);
-        return {
-          success: false,
-          message: 'Lỗi ghi nhận điểm danh vào hệ thống. Vui lòng thử lại!'
-        };
-      }
-    }
-
-    // Case B: Student has NOT registered prior to event, but scanned live QR at the venue
-    if (camp.status === 'completed') {
-      return {
-        success: false,
-        message: `Hoạt động "${camp.title}" đã kết thúc và bạn chưa từng đăng ký tham gia.`
-      };
-    }
-
-    try {
-      const newRegId = `reg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-      const defaultPerfScore = 10;
-      const scoreToAward = camp.scoreType === 'Ngày' ? camp.score : 0;
-      const hoursToAward = camp.scoreType !== 'Ngày' ? camp.score : 0;
-
-      const newRegistration: Registration = {
-        id: newRegId,
-        campaignId: camp.id,
-        campaignTitle: camp.title,
-        studentId: student.id,
-        studentName: student.name,
-        studentClass: student.className,
-        studentFaculty: student.faculty,
-        registeredAt: new Date().toISOString().slice(0, 16).replace('T', ' '),
-        status: 'completed',
-        attendanceStatus: 'present',
-        performanceScore: defaultPerfScore,
-        attendedAt: nowFormatted,
-        checkinMethod: 'qr_20s'
-      };
-
-      const batch = writeBatch(db);
-      batch.set(doc(db, 'registrations', newRegId), newRegistration);
-
-      const newSlots = (camp.slotsRegistered || 0) + 1;
-      const campUpdates: any = { slotsRegistered: newSlots };
-      if (newSlots >= camp.slotsTotal) {
-        campUpdates.status = 'paused';
-      }
-      batch.update(doc(db, 'campaigns', camp.id), campUpdates);
+      });
 
       const updatedCtxhAccumulated = (student.ctxhAccumulated || 0) + scoreToAward;
       const updatedCtxhMissing = Math.max(0, (student.ctxhMissing || 0) - scoreToAward);
@@ -1512,15 +1501,19 @@ export default function App() {
       const unitText = camp.scoreType === 'Ngày' ? `${camp.score} ngày CTXH` : `${camp.score} giờ`;
       return {
         success: true,
-        message: `Đã tự động đăng ký và điểm danh thành công tại hoạt động "${camp.title}"! Ghi nhận có mặt, +${unitText} và +10 điểm đánh giá.`
+        message: `Điểm danh thành công hoạt động "${camp.title}"! Ghi nhận có mặt lúc ${nowFormatted}, tích lũy +${unitText} và +10 điểm đánh giá.`
       };
     } catch (err) {
-      console.error('Error auto-registering and QR checkin:', err);
-      handleFirestoreError(err, OperationType.WRITE, `registrations_qr_auto`);
+      console.error('Error completing QR attendance:', err);
+      handleFirestoreError(err, OperationType.WRITE, `registrations_checkin`);
       return {
         success: false,
-        message: 'Lỗi ghi nhận điểm danh. Vui lòng thử lại!'
+        message: 'Lỗi ghi nhận điểm danh vào hệ thống. Vui lòng thử lại!'
       };
+    } finally {
+      setTimeout(() => {
+        checkinInProgressRef.current.delete(lockKey);
+      }, 5000);
     }
   };
 

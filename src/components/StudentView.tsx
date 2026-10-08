@@ -360,9 +360,19 @@ export default function StudentView({
                               </>
                             )}
                             {userReg.status === 'approved' && (
-                              <div className="w-full text-center py-2 bg-emerald-50 text-emerald-700 rounded-xl text-xs font-semibold flex items-center justify-center gap-1 border border-emerald-200">
-                                <Check className="w-3.5 h-3.5" />
-                                Đã duyệt (Sẽ tham gia)
+                              <div className="flex items-center gap-2 w-full">
+                                <div className="flex-1 text-center py-2 bg-emerald-50 text-emerald-700 rounded-xl text-xs font-semibold flex items-center justify-center gap-1 border border-emerald-200">
+                                  <Check className="w-3.5 h-3.5" />
+                                  Đã duyệt
+                                </div>
+                                <button
+                                  onClick={() => setShowQRScanner(true)}
+                                  className="px-3 py-2 bg-amber-400 hover:bg-amber-300 text-blue-950 font-bold rounded-xl text-xs flex items-center gap-1 shadow-2xs cursor-pointer transition-all shrink-0"
+                                  title="Quét mã QR điểm danh hoạt động"
+                                >
+                                  <QrCode className="w-3.5 h-3.5" />
+                                  Điểm danh
+                                </button>
                               </div>
                             )}
                             {userReg.status === 'completed' && (

@@ -105,11 +105,20 @@ export default function DynamicAttendanceQRModal({
     setTimeout(() => setJustRotated(false), 2500);
   };
 
-  // Filter registrations for this campaign
+  // Filter registrations for this campaign and deduplicate by studentId to guarantee uniqueness
   const campRegs = registrations.filter(r => r.campaignId === campaign.id);
-  const attendedRegs = campRegs.filter(r => r.attendanceStatus === 'present' || r.status === 'completed');
-  const pendingOrApprovedRegs = campRegs.filter(r => r.attendanceStatus !== 'present' && r.status !== 'completed' && r.status !== 'rejected');
-  const totalApproved = campRegs.filter(r => r.status !== 'rejected');
+  const uniqueCampRegsMap = new Map<string, Registration>();
+  campRegs.forEach(r => {
+    const existing = uniqueCampRegsMap.get(r.studentId);
+    if (!existing || (r.status === 'completed' && existing.status !== 'completed')) {
+      uniqueCampRegsMap.set(r.studentId, r);
+    }
+  });
+  const dedupedCampRegs = Array.from(uniqueCampRegsMap.values());
+
+  const attendedRegs = dedupedCampRegs.filter(r => r.attendanceStatus === 'present' || r.status === 'completed');
+  const pendingOrApprovedRegs = dedupedCampRegs.filter(r => r.attendanceStatus !== 'present' && r.status !== 'completed' && r.status !== 'rejected');
+  const totalApproved = dedupedCampRegs.filter(r => r.status !== 'rejected');
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(checkinUrl);
@@ -284,6 +293,11 @@ export default function DynamicAttendanceQRModal({
               <p className="text-xs text-gray-600 font-medium leading-relaxed">
                 Đội viên mở camera điện thoại hoặc bấm <strong>"Quét QR Điểm danh"</strong> trên Cổng Đội viên để quét mã này.
               </p>
+
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-800 border border-amber-200 rounded-full text-[11px] font-semibold">
+                <ShieldCheck className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                <span>Chỉ sinh viên đã đăng ký mới quét được • Chống quét trùng lặp</span>
+              </div>
 
               <div className="flex items-center justify-center gap-2 pt-1">
                 <button

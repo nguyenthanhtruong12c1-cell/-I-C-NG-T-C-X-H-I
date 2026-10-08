@@ -20,6 +20,8 @@ export default function QRScannerModal({
 
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
   const scannerContainerId = 'qr-camera-viewfinder';
+  const isScanningLockedRef = useRef(false);
+  const lastScannedRef = useRef<{ code: string; time: number } | null>(null);
 
   // Start camera on mount
   useEffect(() => {
@@ -75,9 +77,26 @@ export default function QRScannerModal({
 
   // Handler for detected QR Code text
   const handleDetectedCode = async (code: string) => {
-    if (isProcessing) return;
+    // Synchronous immediate lock
+    if (isScanningLockedRef.current) return;
+
+    // Debounce duplicate scans within 4 seconds
+    const now = Date.now();
+    if (lastScannedRef.current && lastScannedRef.current.code === code && (now - lastScannedRef.current.time < 4000)) {
+      return;
+    }
+
+    isScanningLockedRef.current = true;
+    lastScannedRef.current = { code, time: now };
     setIsProcessing(true);
     setErrorMessage(null);
+
+    // Immediately pause scanner stream so no subsequent video frames fire
+    if (html5QrCodeRef.current && html5QrCodeRef.current.isScanning) {
+      try {
+        html5QrCodeRef.current.pause(true);
+      } catch {}
+    }
 
     try {
       const result = await onScanSuccess(code);
@@ -91,16 +110,11 @@ export default function QRScannerModal({
         setScanResult(result.message);
       } else {
         setErrorMessage(result.message || 'Mã QR không hợp lệ!');
-        // Allow scanning again after 2.5s for rotating QR code
-        setTimeout(() => {
-          setIsProcessing(false);
-        }, 2500);
+        setIsProcessing(false);
       }
     } catch (err: any) {
       setErrorMessage(err?.message || 'Có lỗi xảy ra khi xử lý điểm danh!');
-      setTimeout(() => {
-        setIsProcessing(false);
-      }, 2500);
+      setIsProcessing(false);
     }
   };
 
@@ -225,7 +239,13 @@ export default function QRScannerModal({
                   <button
                     onClick={() => {
                       setErrorMessage(null);
+                      isScanningLockedRef.current = false;
                       setIsProcessing(false);
+                      if (html5QrCodeRef.current) {
+                        try {
+                          html5QrCodeRef.current.resume();
+                        } catch {}
+                      }
                     }}
                     className="text-[11px] font-bold text-red-700 underline hover:text-red-900 shrink-0 cursor-pointer ml-1"
                   >
