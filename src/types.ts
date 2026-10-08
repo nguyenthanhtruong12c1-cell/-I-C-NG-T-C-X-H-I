@@ -72,3 +72,12 @@ export interface Statistics {
   totalHoursContributed: number;
   totalScoreAwarded: number;
 }
+
+export interface AttendanceSession {
+  campaignId: string;
+  campaignTitle: string;
+  activeToken: string;
+  slot: number;
+  active: boolean;
+  updatedAt: string;
+}

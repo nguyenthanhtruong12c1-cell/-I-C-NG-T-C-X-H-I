@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import QRCode from 'qrcode';
 import { Campaign, Registration, Student } from '../types';
 import { generateAttendanceToken, getRemainingSeconds } from '../lib/attendanceUtils';
+import { db } from '../lib/firebase';
+import { doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { 
   X, 
   QrCode, 
@@ -18,7 +20,10 @@ import {
   Search,
   UserCheck,
   AlertCircle,
-  ExternalLink
+  ExternalLink,
+  Power,
+  PowerOff,
+  Ban
 } from 'lucide-react';
 
 interface DynamicAttendanceQRModalProps {
@@ -46,20 +51,78 @@ export default function DynamicAttendanceQRModal({
   const [searchAttendee, setSearchAttendee] = useState('');
   const [isCheckingInId, setIsCheckingInId] = useState<string | null>(null);
 
-  const activeSlotRef = useRef<number>(Math.floor(Date.now() / 20000));
+  // Trạng thái bật / tắt điểm danh hoạt động - chế độ mặc định là TẮT điểm danh
+  const isCompletedCampaign = campaign.status === 'completed';
+  const [isAttendanceActive, setIsAttendanceActive] = useState<boolean>(false);
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
 
-  // Timer loop for 20-second countdown and precise token rotation
+  const activeSlotRef = useRef<number>(Math.floor(Date.now() / 20000));
+  const isAttendanceActiveRef = useRef<boolean>(false);
+  isAttendanceActiveRef.current = isAttendanceActive;
+
+  // Cập nhật mã QR hiện tại lên Firestore và ghi đè (xóa) mã QR cũ trước đó để nhẹ dữ liệu
+  const syncActiveTokenToFirestore = async (token: string, slot: number) => {
+    try {
+      setIsSyncing(true);
+      await setDoc(doc(db, 'attendance_sessions', campaign.id), {
+        campaignId: campaign.id,
+        campaignTitle: campaign.title,
+        activeToken: token,
+        slot: slot,
+        active: true,
+        updatedAt: new Date().toISOString()
+      });
+    } catch (err) {
+      console.error('Lỗi cập nhật mã QR điểm danh lên Firestore:', err);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // Tắt điểm danh và xóa sạch phiên điểm danh trên Firestore để vô hiệu hóa mã cũ và nhẹ dữ liệu
+  const turnOffAttendanceInFirestore = async () => {
+    try {
+      setIsSyncing(true);
+      await deleteDoc(doc(db, 'attendance_sessions', campaign.id));
+    } catch (err) {
+      console.error('Lỗi xóa phiên điểm danh trên Firestore:', err);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // Dọn dẹp phiên điểm danh khi đóng Modal hoặc rời trang
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      turnOffAttendanceInFirestore();
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    // Dọn dẹp: Khi tắt/đóng điểm danh hoạt động thì xóa mã QR khỏi Firestore để nhẹ dữ liệu
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      turnOffAttendanceInFirestore();
+    };
+  }, [campaign.id]);
+
+  // Vòng lặp đếm ngược 20s và tự động sinh mã mới, xóa mã cũ
   useEffect(() => {
     const updateLoop = () => {
+      if (!isAttendanceActiveRef.current) return;
+
       const remaining = getRemainingSeconds();
       setSecondsLeft(remaining);
 
       const currentSlot = Math.floor(Date.now() / 20000);
       if (currentSlot !== activeSlotRef.current) {
         activeSlotRef.current = currentSlot;
-        setCurrentToken(generateAttendanceToken(campaign.id, currentSlot));
+        const newToken = generateAttendanceToken(campaign.id, currentSlot);
+        setCurrentToken(newToken);
         setJustRotated(true);
         setTimeout(() => setJustRotated(false), 2500);
+
+        // Sau khi mã mới được tạo thành, mã cũ được ghi đè và xóa khỏi Firestore
+        syncActiveTokenToFirestore(newToken, currentSlot);
       }
     };
 
@@ -72,8 +135,13 @@ export default function DynamicAttendanceQRModal({
   const hostUrl = window.location.origin;
   const checkinUrl = `${hostUrl}?action=checkin&token=${encodeURIComponent(currentToken)}`;
 
-  // Generate QR Code locally via qrcode package
+  // Generate QR Code locally via qrcode package khi đang mở điểm danh
   useEffect(() => {
+    if (!isAttendanceActive) {
+      setQrDataUrl('');
+      return;
+    }
+
     let isMounted = true;
     QRCode.toDataURL(checkinUrl, {
       width: 380,
@@ -94,15 +162,42 @@ export default function DynamicAttendanceQRModal({
     return () => {
       isMounted = false;
     };
-  }, [checkinUrl]);
+  }, [checkinUrl, isAttendanceActive]);
 
-  // Manual rotation button
+  // Đổi mã ngay lập tức (Manual force refresh)
   const handleForceRefresh = () => {
+    if (!isAttendanceActive) return;
     const newSlot = activeSlotRef.current + 1;
     activeSlotRef.current = newSlot;
-    setCurrentToken(generateAttendanceToken(campaign.id, newSlot));
+    const newToken = generateAttendanceToken(campaign.id, newSlot);
+    setCurrentToken(newToken);
     setJustRotated(true);
     setTimeout(() => setJustRotated(false), 2500);
+    // Vô hiệu hóa mã cũ và lưu mã mới
+    syncActiveTokenToFirestore(newToken, newSlot);
+  };
+
+  // Bật hoặc tắt điểm danh hoạt động
+  const handleToggleAttendance = async () => {
+    if (isAttendanceActive) {
+      // Tắt điểm danh: Xóa mã khỏi Firestore để nhẹ dữ liệu và vô hiệu hóa tất cả mã trước đó
+      setIsAttendanceActive(false);
+      await turnOffAttendanceInFirestore();
+    } else {
+      // Bật lại điểm danh: Sinh mã mới và kích hoạt lên Firestore
+      setIsAttendanceActive(true);
+      const newSlot = Math.floor(Date.now() / 20000);
+      activeSlotRef.current = newSlot;
+      const newToken = generateAttendanceToken(campaign.id, newSlot);
+      setCurrentToken(newToken);
+      await syncActiveTokenToFirestore(newToken, newSlot);
+    }
+  };
+
+  // Đóng Modal: Đảm bảo tắt điểm danh và xóa dữ liệu mã QR
+  const handleCloseModal = async () => {
+    await turnOffAttendanceInFirestore();
+    onClose();
   };
 
   // Filter registrations for this campaign and deduplicate by studentId to guarantee uniqueness
@@ -174,10 +269,22 @@ export default function DynamicAttendanceQRModal({
                 <h3 className="font-display font-bold text-sm sm:text-base tracking-tight">
                   Điểm danh tham gia hoạt động bằng mã QR
                 </h3>
-                <span className="bg-amber-400 text-blue-950 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide flex items-center gap-1 shadow-2xs">
-                  <RefreshCw className={`w-2.5 h-2.5 ${secondsLeft <= 3 ? 'animate-spin' : ''}`} />
-                  Đổi mã mỗi 20 giây
-                </span>
+                {isCompletedCampaign ? (
+                  <span className="bg-gray-700 text-white px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide flex items-center gap-1 shadow-2xs">
+                    <PowerOff className="w-2.5 h-2.5" />
+                    Hoạt động đã kết thúc
+                  </span>
+                ) : isAttendanceActive ? (
+                  <span className="bg-amber-400 text-blue-950 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide flex items-center gap-1 shadow-2xs">
+                    <RefreshCw className={`w-2.5 h-2.5 ${secondsLeft <= 3 ? 'animate-spin' : ''}`} />
+                    Đổi mã mỗi 20s (Tự hủy mã cũ)
+                  </span>
+                ) : (
+                  <span className="bg-rose-500 text-white px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wide flex items-center gap-1 shadow-2xs">
+                    <PowerOff className="w-2.5 h-2.5" />
+                    Đã tắt điểm danh
+                  </span>
+                )}
               </div>
               <p className="text-white/85 text-xs truncate max-w-md sm:max-w-xl mt-0.5 font-medium">
                 {campaign.title}
@@ -186,6 +293,32 @@ export default function DynamicAttendanceQRModal({
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Nút Bật / Tắt điểm danh (Chỉ hiển thị khi hoạt động chưa kết thúc) */}
+            {!isCompletedCampaign && (
+              <button
+                onClick={handleToggleAttendance}
+                disabled={isSyncing}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all cursor-pointer ${
+                  isAttendanceActive
+                    ? 'bg-rose-500/90 hover:bg-rose-600 text-white border border-rose-400/40'
+                    : 'bg-emerald-500 hover:bg-emerald-600 text-white border border-emerald-400/40'
+                }`}
+                title={isAttendanceActive ? 'Tắt điểm danh (Vô hiệu hóa & xóa mã QR)' : 'Bật lại điểm danh (Sinh mã QR mới)'}
+              >
+                {isAttendanceActive ? (
+                  <>
+                    <PowerOff className="w-3.5 h-3.5" />
+                    <span>Tắt điểm danh</span>
+                  </>
+                ) : (
+                  <>
+                    <Power className="w-3.5 h-3.5" />
+                    <span>Bật điểm danh</span>
+                  </>
+                )}
+              </button>
+            )}
+
             <button
               onClick={() => setIsFullscreen(!isFullscreen)}
               className="text-white/80 hover:text-white p-2 hover:bg-white/15 rounded-xl transition-colors cursor-pointer"
@@ -194,9 +327,9 @@ export default function DynamicAttendanceQRModal({
               {isFullscreen ? <Minimize2 className="w-5 h-5" /> : <Maximize2 className="w-5 h-5" />}
             </button>
             <button
-              onClick={onClose}
+              onClick={handleCloseModal}
               className="text-white/80 hover:text-white p-2 hover:bg-white/15 rounded-xl transition-colors cursor-pointer"
-              title="Đóng cửa sổ"
+              title="Đóng cửa sổ và tắt phiên điểm danh"
             >
               <X className="w-5 h-5" />
             </button>
@@ -209,113 +342,163 @@ export default function DynamicAttendanceQRModal({
           {/* LEFT COLUMN: Large QR Code & 20s Live Countdown Timer */}
           <div className="lg:col-span-7 flex flex-col items-center text-center space-y-4">
             
-            {/* 20s Countdown Indicator Card */}
-            <div className="w-full bg-slate-50 border border-slate-200/90 rounded-2xl p-4 space-y-2.5 shadow-2xs">
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-bold text-slate-700 flex items-center gap-1.5">
-                  <Clock className="w-4 h-4 text-[#00529C]" />
-                  <span>Mã QR sẽ tự làm mới sau:</span>
-                </span>
-                <div className="flex items-center gap-2">
-                  <span className={`font-mono font-extrabold text-sm px-2.5 py-0.5 rounded-lg transition-colors ${
-                    secondsLeft <= 5 
-                      ? 'bg-amber-100 text-amber-700 animate-pulse' 
-                      : 'bg-blue-100 text-[#00529C]'
-                  }`}>
-                    {secondsLeft} giây
-                  </span>
+            {isAttendanceActive ? (
+              <>
+                {/* 20s Countdown Indicator Card */}
+                <div className="w-full bg-slate-50 border border-slate-200/90 rounded-2xl p-4 space-y-2.5 shadow-2xs">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-slate-700 flex items-center gap-1.5">
+                      <Clock className="w-4 h-4 text-[#00529C]" />
+                      <span>Mã QR sẽ tự làm mới sau:</span>
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className={`font-mono font-extrabold text-sm px-2.5 py-0.5 rounded-lg transition-colors ${
+                        secondsLeft <= 5 
+                          ? 'bg-amber-100 text-amber-700 animate-pulse' 
+                          : 'bg-blue-100 text-[#00529C]'
+                      }`}>
+                        {secondsLeft} giây
+                      </span>
+                      <button
+                        onClick={handleForceRefresh}
+                        className="p-1 hover:bg-slate-200 rounded-md text-slate-500 hover:text-[#00529C] transition-colors cursor-pointer text-[10px] flex items-center gap-0.5"
+                        title="Làm mới mã ngay lập tức (Mã cũ sẽ bị xóa & vô hiệu hóa)"
+                      >
+                        <RefreshCw className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Animated Progress Bar */}
+                  <div className="w-full h-3 bg-slate-200 rounded-full overflow-hidden p-0.5">
+                    <div 
+                      className={`h-full transition-all duration-500 rounded-full ${
+                        secondsLeft <= 5 
+                          ? 'bg-gradient-to-r from-amber-500 to-red-500' 
+                          : 'bg-gradient-to-r from-[#00529C] via-[#00AEEF] to-emerald-400'
+                      }`}
+                      style={{ width: `${100 - progressPercent}%` }}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between text-[11px] text-slate-500 pt-0.5">
+                    <span className="flex items-center gap-1 text-emerald-700 font-semibold">
+                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                      Mã cũ tự động vô hiệu hóa & xóa để nhẹ dữ liệu
+                    </span>
+                    {justRotated ? (
+                      <span className="text-amber-600 font-bold animate-bounce text-[10px]">
+                        ✨ Đã đổi mã mới (Mã cũ đã xóa)!
+                      </span>
+                    ) : (
+                      <span className="text-slate-400 text-[10px]">Chu kỳ 20s tiêu chuẩn</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* QR Code Canvas Frame */}
+                <div className={`relative p-5 sm:p-6 bg-white border-2 border-dashed rounded-3xl shadow-sm transition-all duration-300 ${
+                  justRotated ? 'border-amber-400 ring-4 ring-amber-100' : 'border-blue-200 hover:border-[#00529C]'
+                }`}>
+                  <div className="w-64 h-64 sm:w-72 sm:h-72 md:w-80 md:h-80 bg-white flex items-center justify-center rounded-2xl overflow-hidden shadow-inner">
+                    {qrDataUrl ? (
+                      <img 
+                        key={currentToken}
+                        src={qrDataUrl} 
+                        alt="Mã QR Điểm danh Động" 
+                        className="w-full h-full object-contain animate-fade-in"
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center justify-center gap-2 text-gray-400">
+                        <RefreshCw className="w-8 h-8 animate-spin text-[#00529C]" />
+                        <span className="text-xs">Đang sinh mã QR...</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Decorative Corner Badges */}
+                  <div className="absolute top-2 left-2 w-4 h-4 border-t-2 border-l-2 border-[#00529C] rounded-tl-md"></div>
+                  <div className="absolute top-2 right-2 w-4 h-4 border-t-2 border-r-2 border-[#00529C] rounded-tr-md"></div>
+                  <div className="absolute bottom-2 left-2 w-4 h-4 border-b-2 border-l-2 border-[#00529C] rounded-bl-md"></div>
+                  <div className="absolute bottom-2 right-2 w-4 h-4 border-b-2 border-r-2 border-[#00529C] rounded-br-md"></div>
+                </div>
+
+                {/* Instructions & Token code */}
+                <div className="space-y-2 max-w-md text-center">
+                  <p className="text-xs text-gray-600 font-medium leading-relaxed">
+                    Đội viên mở camera điện thoại hoặc bấm <strong>"Quét QR Điểm danh"</strong> trên Cổng Đội viên để quét mã này.
+                  </p>
+
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-800 border border-amber-200 rounded-full text-[11px] font-semibold">
+                    <ShieldCheck className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                    <span>Chỉ sinh viên đã đăng ký mới quét được • Mã cũ bị hủy ngay</span>
+                  </div>
+
+                  <div className="flex items-center justify-center gap-2 pt-1">
+                    <button
+                      onClick={handleCopyLink}
+                      className="px-3.5 py-1.5 bg-gray-50 hover:bg-gray-100 text-gray-700 border border-gray-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copied ? 'Đã sao chép link' : 'Sao chép link điểm danh'}</span>
+                    </button>
+                    <button
+                      onClick={handleForceRefresh}
+                      className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-[#00529C] border border-blue-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span>Đổi mã ngay</span>
+                    </button>
+                  </div>
+                </div>
+              </>
+            ) : isCompletedCampaign ? (
+              /* Trạng thái HOẠT ĐỘNG ĐÃ KẾT THÚC */
+              <div className="w-full flex flex-col items-center justify-center p-8 bg-slate-50 border-2 border-dashed border-gray-300 rounded-3xl space-y-4">
+                <div className="w-16 h-16 rounded-3xl bg-gray-100 border border-gray-200 flex items-center justify-center text-gray-500 shadow-inner">
+                  <Ban className="w-8 h-8" />
+                </div>
+
+                <div className="text-center space-y-1.5 max-w-sm">
+                  <h4 className="font-display font-bold text-gray-800 text-base">
+                    Hoạt động đã kết thúc
+                  </h4>
+                  <p className="text-xs text-gray-500 leading-relaxed">
+                    Hoạt động tình nguyện này đã chính thức <strong>kết thúc</strong>. Hệ thống <strong>không hiển thị mã điểm danh QR</strong> nữa để đảm bảo tính minh bạch và tránh phát sinh điểm danh sau sự kiện.
+                  </p>
+                </div>
+
+                <div className="pt-2 text-xs text-gray-400 font-medium">
+                  Quản trị viên có thể tiếp tục xem và chấm điểm thành viên ở cột bên phải.
+                </div>
+              </div>
+            ) : (
+              /* Trạng thái KHI TẮT ĐIỂM DANH (Mặc định) */
+              <div className="w-full flex flex-col items-center justify-center p-8 bg-slate-50 border-2 border-dashed border-slate-300 rounded-3xl space-y-4">
+                <div className="w-16 h-16 rounded-3xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-600 shadow-inner">
+                  <PowerOff className="w-8 h-8" />
+                </div>
+
+                <div className="text-center space-y-1.5 max-w-sm">
+                  <h4 className="font-display font-bold text-slate-800 text-base">
+                    Điểm danh đang ở chế độ TẮT
+                  </h4>
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    Chế độ mặc định là <strong>tắt điểm danh</strong>. Khi Ban tổ chức sẵn sàng cho sinh viên điểm danh, hãy bấm nút <strong>"Bắt đầu phát sóng mã QR"</strong> bên dưới.
+                  </p>
+                </div>
+
+                <div className="pt-2">
                   <button
-                    onClick={handleForceRefresh}
-                    className="p-1 hover:bg-slate-200 rounded-md text-slate-500 hover:text-[#00529C] transition-colors cursor-pointer text-[10px] flex items-center gap-0.5"
-                    title="Làm mới mã ngay lập tức"
+                    onClick={handleToggleAttendance}
+                    className="px-5 py-2.5 bg-gradient-to-r from-[#00529C] to-[#00AEEF] hover:from-[#00417c] hover:to-[#0092c9] text-white font-bold rounded-2xl text-xs flex items-center gap-2 shadow-sm hover:shadow transition-all cursor-pointer"
                   >
-                    <RefreshCw className="w-3 h-3" />
+                    <Power className="w-4 h-4" />
+                    <span>Bắt đầu phát sóng mã QR</span>
                   </button>
                 </div>
               </div>
-
-              {/* Animated Progress Bar */}
-              <div className="w-full h-3 bg-slate-200 rounded-full overflow-hidden p-0.5">
-                <div 
-                  className={`h-full transition-all duration-500 rounded-full ${
-                    secondsLeft <= 5 
-                      ? 'bg-gradient-to-r from-amber-500 to-red-500' 
-                      : 'bg-gradient-to-r from-[#00529C] via-[#00AEEF] to-emerald-400'
-                  }`}
-                  style={{ width: `${100 - progressPercent}%` }}
-                />
-              </div>
-
-              <div className="flex items-center justify-between text-[11px] text-slate-500 pt-0.5">
-                <span className="flex items-center gap-1 text-emerald-700 font-semibold">
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                  Chống điểm danh hộ (mã hết hạn sau 20s)
-                </span>
-                {justRotated ? (
-                  <span className="text-amber-600 font-bold animate-bounce text-[10px]">
-                    ✨ Đã đổi mã mới!
-                  </span>
-                ) : (
-                  <span className="text-slate-400 text-[10px]">Chu kỳ 20s tiêu chuẩn</span>
-                )}
-              </div>
-            </div>
-
-            {/* QR Code Canvas Frame */}
-            <div className={`relative p-5 sm:p-6 bg-white border-2 border-dashed rounded-3xl shadow-sm transition-all duration-300 ${
-              justRotated ? 'border-amber-400 ring-4 ring-amber-100' : 'border-blue-200 hover:border-[#00529C]'
-            }`}>
-              <div className="w-64 h-64 sm:w-72 sm:h-72 md:w-80 md:h-80 bg-white flex items-center justify-center rounded-2xl overflow-hidden shadow-inner">
-                {qrDataUrl ? (
-                  <img 
-                    key={currentToken}
-                    src={qrDataUrl} 
-                    alt="Mã QR Điểm danh Động" 
-                    className="w-full h-full object-contain animate-fade-in"
-                  />
-                ) : (
-                  <div className="flex flex-col items-center justify-center gap-2 text-gray-400">
-                    <RefreshCw className="w-8 h-8 animate-spin text-[#00529C]" />
-                    <span className="text-xs">Đang sinh mã QR...</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Decorative Corner Badges */}
-              <div className="absolute top-2 left-2 w-4 h-4 border-t-2 border-l-2 border-[#00529C] rounded-tl-md"></div>
-              <div className="absolute top-2 right-2 w-4 h-4 border-t-2 border-r-2 border-[#00529C] rounded-tr-md"></div>
-              <div className="absolute bottom-2 left-2 w-4 h-4 border-b-2 border-l-2 border-[#00529C] rounded-bl-md"></div>
-              <div className="absolute bottom-2 right-2 w-4 h-4 border-b-2 border-r-2 border-[#00529C] rounded-br-md"></div>
-            </div>
-
-            {/* Instructions & Token code */}
-            <div className="space-y-2 max-w-md text-center">
-              <p className="text-xs text-gray-600 font-medium leading-relaxed">
-                Đội viên mở camera điện thoại hoặc bấm <strong>"Quét QR Điểm danh"</strong> trên Cổng Đội viên để quét mã này.
-              </p>
-
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-800 border border-amber-200 rounded-full text-[11px] font-semibold">
-                <ShieldCheck className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                <span>Chỉ sinh viên đã đăng ký mới quét được • Chống quét trùng lặp</span>
-              </div>
-
-              <div className="flex items-center justify-center gap-2 pt-1">
-                <button
-                  onClick={handleCopyLink}
-                  className="px-3.5 py-1.5 bg-gray-50 hover:bg-gray-100 text-gray-700 border border-gray-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
-                >
-                  {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                  <span>{copied ? 'Đã sao chép link' : 'Sao chép link điểm danh'}</span>
-                </button>
-                <button
-                  onClick={handleForceRefresh}
-                  className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-[#00529C] border border-blue-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  <span>Đổi mã ngay</span>
-                </button>
-              </div>
-            </div>
+            )}
 
           </div>
 
@@ -488,13 +671,15 @@ export default function DynamicAttendanceQRModal({
 
         {/* Modal Footer */}
         <div className="px-5 sm:px-6 py-3.5 bg-gray-50 border-t border-gray-100 flex items-center justify-between shrink-0">
-          <div className="text-[11px] text-gray-500 flex items-center gap-1.5">
-            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+          <div className="text-[11px] text-gray-500 flex items-center gap-1.5 flex-wrap">
+            <Sparkles className="w-3.5 h-3.5 text-amber-500 shrink-0" />
             <span>Mã bảo mật phiên: <strong className="font-mono text-gray-700">{currentToken.slice(-7)}</strong></span>
+            <span className="text-gray-300">•</span>
+            <span className="text-emerald-700 font-medium">⚡ Tự động vô hiệu hóa và xóa mã cũ khi sinh mã mới để nhẹ dữ liệu</span>
           </div>
 
           <button
-            onClick={onClose}
+            onClick={handleCloseModal}
             className="px-4 py-2 bg-white hover:bg-gray-100 border border-gray-200 text-gray-700 rounded-xl text-xs font-bold transition-colors cursor-pointer"
           >
             Đóng cửa sổ

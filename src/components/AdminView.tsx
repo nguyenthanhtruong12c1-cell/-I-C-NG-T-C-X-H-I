@@ -743,7 +743,7 @@ export default function AdminView({
                     <th className="p-3.5">Họ & Tên / MSSV</th>
                     <th className="p-3.5">Khoa / Lớp</th>
                     <th className="p-3.5">Vai trò</th>
-                    <th className="p-3.5 text-center">Hoạt động (Giờ / Điểm)</th>
+                    <th className="p-3.5 text-center">Ngày công tác xã hội tích lũy / Điểm</th>
                     <th className="p-3.5">Trạng thái</th>
                     <th className="p-3.5 text-right">Tác vụ</th>
                   </tr>
@@ -794,7 +794,9 @@ export default function AdminView({
                         )}
                       </td>
                       <td className="p-3.5 text-center">
-                        <div className="font-bold text-gray-800">{std.totalHours} giờ</div>
+                        <div className="font-bold text-gray-800">
+                          {std.ctxhAccumulated !== undefined ? `${std.ctxhAccumulated} ngày` : `${std.totalHours} giờ`}
+                        </div>
                         <div className="text-amber-600 font-extrabold text-[11px] mt-0.5">{std.totalPerformanceScore ?? 0}đ</div>
                       </td>
                       <td className="p-3.5">
@@ -1021,15 +1023,17 @@ export default function AdminView({
                       </button>
                     )}
 
-                    {/* Nút điểm danh bằng mã QR (20s) */}
-                    <button
-                      onClick={() => setViewingAttendanceQrCampId(camp.id)}
-                      className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer shadow-2xs ml-auto"
-                      title="Điểm danh tham gia hoạt động bằng mã QR (thay đổi mỗi 20 giây)"
-                    >
-                      <QrCode className="w-3 h-3 text-amber-600" />
-                      Điểm danh QR (20s)
-                    </button>
+                    {/* Nút điểm danh bằng mã QR (20s) - Chỉ hiển thị khi hoạt động chưa kết thúc */}
+                    {camp.status !== 'completed' && (
+                      <button
+                        onClick={() => setViewingAttendanceQrCampId(camp.id)}
+                        className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer shadow-2xs ml-auto"
+                        title="Điểm danh tham gia hoạt động bằng mã QR (thay đổi mỗi 20 giây)"
+                      >
+                        <QrCode className="w-3 h-3 text-amber-600" />
+                        Điểm danh QR (20s)
+                      </button>
+                    )}
 
                     {/* Nút tạo mã QR đăng ký */}
                     <button
@@ -1252,14 +1256,16 @@ export default function AdminView({
                                 <span>Chi tiết ({totalRegs})</span>
                                 <ChevronRight className="w-3.5 h-3.5" />
                               </button>
-                              <button
-                                onClick={() => setViewingAttendanceQrCampId(camp.id)}
-                                className="px-3 py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-2xs shrink-0"
-                                title="Điểm danh tham gia hoạt động bằng mã QR (thay đổi sau 20s)"
-                              >
-                                <QrCode className="w-4 h-4 text-amber-700" />
-                                <span>QR 20s</span>
-                              </button>
+                              {camp.status !== 'completed' && (
+                                <button
+                                  onClick={() => setViewingAttendanceQrCampId(camp.id)}
+                                  className="px-3 py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-2xs shrink-0"
+                                  title="Điểm danh tham gia hoạt động bằng mã QR (thay đổi sau 20s)"
+                                >
+                                  <QrCode className="w-4 h-4 text-amber-700" />
+                                  <span>QR 20s</span>
+                                </button>
+                              )}
                             </div>
                           </div>
                         );
@@ -1371,14 +1377,16 @@ export default function AdminView({
                           </select>
                         </div>
 
-                        <button
-                          onClick={() => setViewingAttendanceQrCampId(selectedCamp.id)}
-                          className="px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
-                          title="Trình chiếu mã QR điểm danh tự động đổi sau 20 giây"
-                        >
-                          <QrCode className="w-4 h-4" />
-                          <span>Điểm danh QR (20s)</span>
-                        </button>
+                        {selectedCamp.status !== 'completed' && (
+                          <button
+                            onClick={() => setViewingAttendanceQrCampId(selectedCamp.id)}
+                            className="px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
+                            title="Trình chiếu mã QR điểm danh tự động đổi sau 20 giây"
+                          >
+                            <QrCode className="w-4 h-4" />
+                            <span>Điểm danh QR (20s)</span>
+                          </button>
+                        )}
 
                         <button
                           onClick={() => handleExportCampaignParticipants(selectedCamp.id)}
@@ -1899,14 +1907,16 @@ export default function AdminView({
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setViewingAttendanceQrCampId(viewingCampRegsId)}
-                      className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-[11px] font-bold flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
-                      title="Trình chiếu mã QR điểm danh tự động đổi sau 20 giây"
-                    >
-                      <QrCode className="w-3.5 h-3.5" />
-                      Điểm danh QR (20s)
-                    </button>
+                    {viewingCampaign?.status !== 'completed' && (
+                      <button
+                        onClick={() => setViewingAttendanceQrCampId(viewingCampRegsId)}
+                        className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-[11px] font-bold flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
+                        title="Trình chiếu mã QR điểm danh tự động đổi sau 20 giây"
+                      >
+                        <QrCode className="w-3.5 h-3.5" />
+                        Điểm danh QR (20s)
+                      </button>
+                    )}
                     <button
                       onClick={() => handleExportCampaignParticipants(viewingCampRegsId)}
                       className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-[11px] font-bold flex items-center gap-1.5 transition-all cursor-pointer"

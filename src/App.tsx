@@ -14,6 +14,7 @@ import {
   onSnapshot,
   writeBatch,
   getDocs,
+  getDoc,
   query,
   where
 } from 'firebase/firestore';
@@ -1372,8 +1373,9 @@ export default function App() {
 
   // Dynamic QR Code Attendance Check-In (Rotating 20 seconds)
   // Chỉ cho phép sinh viên đã đăng ký tham gia hoạt động mới quét mã được!
+  // Mã cũ bị vô hiệu hóa & xóa ngay khi mã mới tạo. Khi tắt điểm danh thì mã ngừng hiệu lực.
   const handleCheckinQR = async (tokenOrUrl: string): Promise<{ success: boolean; message: string }> => {
-    // 1. Validate the 20-second token
+    // 1. Validate the token signature and structure
     const validation = validateAttendanceToken(tokenOrUrl);
     if (!validation.valid || !validation.campaignId) {
       return {
@@ -1388,6 +1390,55 @@ export default function App() {
         success: false,
         message: 'Không tìm thấy thông tin hoạt động tương ứng với mã QR này.'
       };
+    }
+
+    // Kiểm tra nếu hoạt động đã kết thúc thì không cho điểm danh nữa
+    if (camp.status === 'completed') {
+      return {
+        success: false,
+        message: `Hoạt động "${camp.title}" đã kết thúc! Hệ thống không còn chấp nhận điểm danh bằng mã QR.`
+      };
+    }
+
+    // 1.1 Kiểm tra trạng thái phiên điểm danh hoạt động trên Firestore:
+    // Sau khi mã QR mới được tạo thành thì mã QR trước đó sẽ vô hiệu hóa và bị xóa.
+    // Đến khi tắt điểm danh hoạt động thì toàn bộ mã điểm danh ngừng hiệu lực.
+    let cleanToken = tokenOrUrl.trim();
+    if (cleanToken.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(cleanToken);
+        if (parsed.token) cleanToken = parsed.token;
+      } catch {}
+    }
+    if (cleanToken.includes('token=')) {
+      try {
+        const queryPart = cleanToken.includes('?') ? cleanToken.split('?')[1] : cleanToken;
+        const params = new URLSearchParams(queryPart);
+        const extracted = params.get('token');
+        if (extracted) cleanToken = extracted;
+      } catch {}
+    }
+
+    try {
+      const sessionDocRef = doc(db, 'attendance_sessions', validation.campaignId);
+      const sessionSnap = await getDoc(sessionDocRef);
+
+      if (!sessionSnap.exists() || !sessionSnap.data()?.active) {
+        return {
+          success: false,
+          message: `Điểm danh cho hoạt động "${camp.title}" hiện đang TẮT hoặc đã kết thúc. Vui lòng liên hệ Ban tổ chức nếu bạn cần hỗ trợ!`
+        };
+      }
+
+      const activeToken = sessionSnap.data()?.activeToken;
+      if (activeToken && activeToken !== cleanToken) {
+        return {
+          success: false,
+          message: 'Mã QR này đã bị vô hiệu hóa vì hệ thống đã chuyển sang mã QR mới! Vui lòng quét lại mã QR mới nhất đang hiển thị trên màn hình.'
+        };
+      }
+    } catch (sessionErr) {
+      console.warn('Lỗi kiểm tra phiên điểm danh hoạt động:', sessionErr);
     }
 
     // 2. Identify the active student

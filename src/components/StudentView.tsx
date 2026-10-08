@@ -365,14 +365,16 @@ export default function StudentView({
                                   <Check className="w-3.5 h-3.5" />
                                   Đã duyệt
                                 </div>
-                                <button
-                                  onClick={() => setShowQRScanner(true)}
-                                  className="px-3 py-2 bg-amber-400 hover:bg-amber-300 text-blue-950 font-bold rounded-xl text-xs flex items-center gap-1 shadow-2xs cursor-pointer transition-all shrink-0"
-                                  title="Quét mã QR điểm danh hoạt động"
-                                >
-                                  <QrCode className="w-3.5 h-3.5" />
-                                  Điểm danh
-                                </button>
+                                {camp.status !== 'completed' && (
+                                  <button
+                                    onClick={() => setShowQRScanner(true)}
+                                    className="px-3 py-2 bg-amber-400 hover:bg-amber-300 text-blue-950 font-bold rounded-xl text-xs flex items-center gap-1 shadow-2xs cursor-pointer transition-all shrink-0"
+                                    title="Quét mã QR điểm danh hoạt động"
+                                  >
+                                    <QrCode className="w-3.5 h-3.5" />
+                                    Điểm danh
+                                  </button>
+                                )}
                               </div>
                             )}
                             {userReg.status === 'completed' && (
@@ -816,8 +818,8 @@ export default function StudentView({
                           )}
                         </div>
 
-                        {/* Nút Quét QR điểm danh trực tiếp cho hoạt động */}
-                        {reg.status !== 'completed' && reg.status !== 'rejected' && (
+                        {/* Nút Quét QR điểm danh trực tiếp cho hoạt động (Không hiển thị khi hoạt động đã kết thúc) */}
+                        {reg.status !== 'completed' && reg.status !== 'rejected' && campaignInfo?.status !== 'completed' && (
                           <button
                             onClick={() => setShowQRScanner(true)}
                             className="px-3.5 py-2 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs self-start sm:self-auto shrink-0"
