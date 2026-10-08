@@ -17,8 +17,11 @@ import {
   FileText, 
   Check, 
   X, 
-  Activity 
+  Activity,
+  QrCode,
+  RefreshCw
 } from 'lucide-react';
+import QRScannerModal from './QRScannerModal';
 
 interface StudentViewProps {
   campaigns: Campaign[];
@@ -26,6 +29,7 @@ interface StudentViewProps {
   activeStudent: Student;
   onRegisterCampaign: (campaignId: string) => void;
   onCancelRegistration: (regId: string) => void;
+  onCheckinQR?: (token: string) => Promise<{ success: boolean; message: string }>;
 }
 
 export default function StudentView({
@@ -33,9 +37,11 @@ export default function StudentView({
   registrations,
   activeStudent,
   onRegisterCampaign,
-  onCancelRegistration
+  onCancelRegistration,
+  onCheckinQR
 }: StudentViewProps) {
   const [activeTab, setActiveTab] = useState<'campaigns' | 'profile'>('campaigns');
+  const [showQRScanner, setShowQRScanner] = useState(false);
   
   // Search & Filter state
   const [searchTerm, setSearchTerm] = useState('');
@@ -91,10 +97,19 @@ export default function StudentView({
             </div>
           </div>
           
-          <div className="flex gap-4 md:self-end">
+          <div className="flex flex-wrap gap-2.5 md:self-end">
+            <button
+              onClick={() => setShowQRScanner(true)}
+              className="px-4 py-2.5 rounded-xl font-bold text-xs bg-amber-400 hover:bg-amber-300 text-blue-950 transition-all shadow-md hover:shadow-lg flex items-center gap-1.5 cursor-pointer"
+              id="btn-student-scan-qr"
+              title="Quét mã QR điểm danh tham gia hoạt động"
+            >
+              <QrCode className="w-4 h-4" />
+              <span>Quét QR Điểm danh</span>
+            </button>
             <button
               onClick={() => setActiveTab('campaigns')}
-              className={`px-4 py-2.5 rounded-xl font-medium text-sm transition-all duration-200 ${
+              className={`px-4 py-2.5 rounded-xl font-medium text-sm transition-all duration-200 cursor-pointer ${
                 activeTab === 'campaigns'
                   ? 'bg-white text-[#00529C] shadow-sm'
                   : 'bg-white/10 text-white hover:bg-white/20'
@@ -106,7 +121,7 @@ export default function StudentView({
             </button>
             <button
               onClick={() => setActiveTab('profile')}
-              className={`px-4 py-2.5 rounded-xl font-medium text-sm transition-all duration-200 ${
+              className={`px-4 py-2.5 rounded-xl font-medium text-sm transition-all duration-200 cursor-pointer ${
                 activeTab === 'profile'
                   ? 'bg-white text-[#00529C] shadow-sm'
                   : 'bg-white/10 text-white hover:bg-white/20'
@@ -791,6 +806,17 @@ export default function StudentView({
                           )}
                         </div>
 
+                        {/* Nút Quét QR điểm danh trực tiếp cho hoạt động */}
+                        {reg.status !== 'completed' && reg.status !== 'rejected' && (
+                          <button
+                            onClick={() => setShowQRScanner(true)}
+                            className="px-3.5 py-2 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs self-start sm:self-auto shrink-0"
+                            title="Quét mã QR để điểm danh có mặt tại hoạt động này"
+                          >
+                            <QrCode className="w-3.5 h-3.5 text-amber-600" />
+                            <span>Quét QR Điểm danh</span>
+                          </button>
+                        )}
 
                       </div>
                     );
@@ -803,7 +829,18 @@ export default function StudentView({
         </div>
       )}
 
-
+      {/* QR Code Scanner Modal */}
+      {showQRScanner && (
+        <QRScannerModal
+          onScanSuccess={async (decodedText) => {
+            if (onCheckinQR) {
+              return await onCheckinQR(decodedText);
+            }
+            return { success: false, message: 'Tính năng quét điểm danh chưa sẵn sàng.' };
+          }}
+          onClose={() => setShowQRScanner(false)}
+        />
+      )}
 
     </div>
   );

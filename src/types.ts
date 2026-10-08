@@ -61,6 +61,8 @@ export interface Registration {
   attendanceStatus: 'present' | 'absent' | 'excused' | 'none';
   performanceScore?: number; // Điểm đánh giá hiệu suất (1-10)
   certificateUrl?: string; // Giấy chứng nhận nếu có
+  attendedAt?: string; // Thời gian điểm danh qua QR
+  checkinMethod?: 'qr_20s' | 'manual' | 'admin';
 }
 
 export interface Statistics {

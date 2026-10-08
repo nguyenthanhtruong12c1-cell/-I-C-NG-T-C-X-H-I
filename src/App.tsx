@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import StudentView from './components/StudentView';
 import AdminView from './components/AdminView';
 import { Campaign, Student, Registration, Statistics } from './types';
 import { initialCampaigns, initialStudents, initialRegistrations } from './data/mockData';
+import { validateAttendanceToken } from './lib/attendanceUtils';
 import { db, handleFirestoreError, OperationType } from './lib/firebase';
 import {
   collection,
@@ -35,7 +36,9 @@ import {
   Download,
   QrCode,
   Clock,
-  BookOpen
+  BookOpen,
+  Database,
+  RefreshCw
 } from 'lucide-react';
 
 const STORAGE_KEY_CAMPAIGNS = 'vol_portal_campaigns';
@@ -132,6 +135,13 @@ export default function App() {
     return action === 'register' ? params.get('campaignId') : null;
   });
 
+  // Dynamic 20s QR Attendance token detected from URL
+  const [pendingCheckinToken, setPendingCheckinToken] = useState<string | null>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const action = params.get('action');
+    return action === 'checkin' ? params.get('token') : null;
+  });
+
   // Firestore Real-time Synchronization
   useEffect(() => {
     const unsubscribeCampaigns = onSnapshot(collection(db, 'campaigns'), (snapshot) => {
@@ -140,6 +150,11 @@ export default function App() {
         list.push(doc.data() as Campaign);
       });
       setCampaigns(list);
+      try {
+        localStorage.setItem(STORAGE_KEY_CAMPAIGNS, JSON.stringify(list));
+      } catch (e) {
+        console.warn('Could not cache campaigns to localStorage:', e);
+      }
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, 'campaigns');
     });
@@ -160,6 +175,11 @@ export default function App() {
           list.push(doc.data() as Student);
         });
         setStudents(list);
+        try {
+          localStorage.setItem(STORAGE_KEY_STUDENTS, JSON.stringify(list));
+        } catch (e) {
+          console.warn('Could not cache students to localStorage:', e);
+        }
       }
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, 'students');
@@ -171,6 +191,11 @@ export default function App() {
         list.push(doc.data() as Registration);
       });
       setRegistrations(list);
+      try {
+        localStorage.setItem(STORAGE_KEY_REGISTRATIONS, JSON.stringify(list));
+      } catch (e) {
+        console.warn('Could not cache registrations to localStorage:', e);
+      }
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, 'registrations');
     });
@@ -181,6 +206,112 @@ export default function App() {
       unsubscribeRegistrations();
     };
   }, []);
+
+  // AUTOMATIC BACKGROUND DATABASE SYNCHRONIZATION
+  // Automatically reconciles campaign slots, statuses, student scores, and metadata without manual triggers
+  const isAutoSyncingRef = useRef(false);
+
+  useEffect(() => {
+    if (campaigns.length === 0 && students.length === 0) return;
+
+    const timer = setTimeout(async () => {
+      if (isAutoSyncingRef.current) return;
+
+      // 1. Detect any campaign slotsRegistered and status discrepancies
+      const campaignUpdates: Array<{ id: string; slotsRegistered: number; status: 'open' | 'paused' | 'completed' }> = [];
+      campaigns.forEach((camp) => {
+        const validRegs = registrations.filter(r => r.campaignId === camp.id && r.status !== 'rejected');
+        const correctSlots = validRegs.length;
+        let correctStatus = camp.status;
+
+        // Auto pause recruitment if slots target reached or exceeded and currently open
+        if (camp.status === 'open' && correctSlots >= camp.slotsTotal) {
+          correctStatus = 'paused';
+        }
+        // Auto reopen recruitment if paused due to full slots and now has room
+        else if (camp.status === 'paused' && correctSlots < camp.slotsTotal) {
+          correctStatus = 'open';
+        }
+
+        if (camp.slotsRegistered !== correctSlots || camp.status !== correctStatus) {
+          campaignUpdates.push({
+            id: camp.id,
+            slotsRegistered: correctSlots,
+            status: correctStatus
+          });
+        }
+      });
+
+      // 2. Detect any student performance score discrepancies
+      const studentUpdates: Array<{ id: string; totalPerformanceScore: number }> = [];
+      students.forEach((student) => {
+        const completedRegs = registrations.filter(r => r.studentId === student.id && r.status === 'completed');
+        let calculatedPerfScore = 0;
+        completedRegs.forEach(r => {
+          if (r.performanceScore !== undefined) calculatedPerfScore += r.performanceScore;
+        });
+
+        if ((student.totalPerformanceScore || 0) !== calculatedPerfScore) {
+          studentUpdates.push({
+            id: student.id,
+            totalPerformanceScore: calculatedPerfScore
+          });
+        }
+      });
+
+      // 3. Detect any registration metadata discrepancies
+      const registrationUpdates: Array<{ id: string; updates: any }> = [];
+      registrations.forEach((reg) => {
+        const student = students.find(s => s.id === reg.studentId);
+        const camp = campaigns.find(c => c.id === reg.campaignId);
+        const updates: any = {};
+        if (student) {
+          if (reg.studentName !== student.name) updates.studentName = student.name;
+          if (reg.studentClass !== student.className) updates.studentClass = student.className;
+          if (reg.studentFaculty !== student.faculty) updates.studentFaculty = student.faculty;
+        }
+        if (camp) {
+          if (reg.campaignTitle !== camp.title) updates.campaignTitle = camp.title;
+        }
+        if (Object.keys(updates).length > 0) {
+          registrationUpdates.push({ id: reg.id, updates });
+        }
+      });
+
+      // Automatically batch commit any detected discrepancies silently in the background
+      if (campaignUpdates.length > 0 || studentUpdates.length > 0 || registrationUpdates.length > 0) {
+        try {
+          isAutoSyncingRef.current = true;
+          const batch = writeBatch(db);
+
+          campaignUpdates.forEach(u => {
+            batch.update(doc(db, 'campaigns', u.id), {
+              slotsRegistered: u.slotsRegistered,
+              status: u.status
+            });
+          });
+
+          studentUpdates.forEach(u => {
+            batch.update(doc(db, 'students', u.id), {
+              totalPerformanceScore: u.totalPerformanceScore
+            });
+          });
+
+          registrationUpdates.forEach(u => {
+            batch.update(doc(db, 'registrations', u.id), u.updates);
+          });
+
+          await batch.commit();
+        } catch (error) {
+          console.warn('[Auto-Sync] Background sync encountered an error:', error);
+        } finally {
+          isAutoSyncingRef.current = false;
+        }
+      }
+    }, 800);
+
+    return () => clearTimeout(timer);
+  }, [campaigns, students, registrations]);
 
   // Update currentUser reference dynamically if profile changes on another device
   useEffect(() => {
@@ -210,11 +341,39 @@ export default function App() {
     const params = new URLSearchParams(window.location.search);
     const action = params.get('action');
     const campaignId = params.get('campaignId');
+    const token = params.get('token');
 
     if (action === 'register' && campaignId) {
       setQrCampaignId(campaignId);
     }
+    if (action === 'checkin' && token) {
+      setPendingCheckinToken(token);
+    }
   }, []);
+
+  // Process pending QR check-in when user is logged in
+  useEffect(() => {
+    if (!pendingCheckinToken) return;
+
+    if (currentUser && role === 'student') {
+      const tokenToProcess = pendingCheckinToken;
+      setPendingCheckinToken(null);
+      // Clean query parameters from URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+
+      handleCheckinQR(tokenToProcess).then((res) => {
+        setAlertModal({
+          title: res.success ? 'Điểm danh QR thành công' : 'Thông báo điểm danh',
+          message: res.message
+        });
+      });
+    } else {
+      setAlertModal({
+        title: 'Điểm danh hoạt động bằng mã QR',
+        message: 'Bạn vừa quét mã QR điểm danh hoạt động. Vui lòng đăng nhập bằng MSSV để hệ thống hoàn tất ghi nhận điểm danh!'
+      });
+    }
+  }, [pendingCheckinToken, currentUser, role]);
 
   // Active student reference computed dynamically from the students array to prevent stale data
   const activeStudent = (currentUser && role === 'student') 
@@ -942,6 +1101,113 @@ export default function App() {
     }
   };
 
+  // Comprehensive Database Synchronization
+  const handleSyncDatabase = async (): Promise<{
+    success: boolean;
+    campaignsUpdated: number;
+    studentsUpdated: number;
+    regsUpdated: number;
+    message: string;
+  }> => {
+    try {
+      const batch = writeBatch(db);
+      let campaignsUpdated = 0;
+      let studentsUpdated = 0;
+      let regsUpdated = 0;
+
+      // 1. Reconcile campaign slotsRegistered and status based on active registrations
+      for (const camp of campaigns) {
+        const validRegs = registrations.filter(r => r.campaignId === camp.id && r.status !== 'rejected');
+        const correctSlots = validRegs.length;
+        let correctStatus = camp.status;
+
+        // Auto pause if reached or exceeded slotsTotal
+        if (camp.status === 'open' && correctSlots >= camp.slotsTotal) {
+          correctStatus = 'paused';
+        }
+        // Auto open if paused and has room
+        else if (camp.status === 'paused' && correctSlots < camp.slotsTotal) {
+          correctStatus = 'open';
+        }
+
+        if (camp.slotsRegistered !== correctSlots || camp.status !== correctStatus) {
+          batch.update(doc(db, 'campaigns', camp.id), {
+            slotsRegistered: correctSlots,
+            status: correctStatus
+          });
+          campaignsUpdated++;
+        }
+      }
+
+      // 2. Reconcile registrations metadata (sync name, class, faculty, campaignTitle)
+      for (const reg of registrations) {
+        const student = students.find(s => s.id === reg.studentId);
+        const camp = campaigns.find(c => c.id === reg.campaignId);
+        const updates: any = {};
+        if (student) {
+          if (reg.studentName !== student.name) updates.studentName = student.name;
+          if (reg.studentClass !== student.className) updates.studentClass = student.className;
+          if (reg.studentFaculty !== student.faculty) updates.studentFaculty = student.faculty;
+        }
+        if (camp) {
+          if (reg.campaignTitle !== camp.title) updates.campaignTitle = camp.title;
+        }
+        if (Object.keys(updates).length > 0) {
+          batch.update(doc(db, 'registrations', reg.id), updates);
+          regsUpdated++;
+        }
+      }
+
+      // 3. Reconcile student totalPerformanceScore
+      for (const student of students) {
+        const completedRegs = registrations.filter(r => r.studentId === student.id && r.status === 'completed');
+        let calculatedPerfScore = 0;
+        completedRegs.forEach(r => {
+          if (r.performanceScore !== undefined) calculatedPerfScore += r.performanceScore;
+        });
+
+        if ((student.totalPerformanceScore || 0) !== calculatedPerfScore) {
+          batch.update(doc(db, 'students', student.id), {
+            totalPerformanceScore: calculatedPerfScore
+          });
+          studentsUpdated++;
+        }
+      }
+
+      if (campaignsUpdated > 0 || studentsUpdated > 0 || regsUpdated > 0) {
+        await batch.commit();
+      }
+
+      // Update local storage backup cache
+      localStorage.setItem(STORAGE_KEY_CAMPAIGNS, JSON.stringify(campaigns));
+      localStorage.setItem(STORAGE_KEY_STUDENTS, JSON.stringify(students));
+      localStorage.setItem(STORAGE_KEY_REGISTRATIONS, JSON.stringify(registrations));
+
+      const message = `Đã đồng bộ cơ sở dữ liệu thành công! Rà soát ${campaigns.length} hoạt động, ${students.length} sinh viên và ${registrations.length} lượt đăng ký. Cập nhật mới: ${campaignsUpdated} hoạt động, ${studentsUpdated} sinh viên, ${regsUpdated} lượt đăng ký.`;
+      
+      setAlertModal({
+        title: 'Đồng bộ cơ sở dữ liệu thành công',
+        message
+      });
+
+      return {
+        success: true,
+        campaignsUpdated,
+        studentsUpdated,
+        regsUpdated,
+        message
+      };
+    } catch (error) {
+      console.error('Error syncing database:', error);
+      handleFirestoreError(error, OperationType.WRITE, 'sync_database');
+      setAlertModal({
+        title: 'Lỗi đồng bộ cơ sở dữ liệu',
+        message: 'Có lỗi xảy ra khi đồng bộ với Firestore. Vui lòng kiểm tra lại kết nối mạng!'
+      });
+      throw error;
+    }
+  };
+
   // Delete student account
   const handleDeleteStudent = (studentId: string) => {
     setConfirmModal({
@@ -1092,6 +1358,172 @@ export default function App() {
     });
   };
 
+  // Dynamic QR Code Attendance Check-In (Rotating 20 seconds)
+  const handleCheckinQR = async (tokenOrUrl: string): Promise<{ success: boolean; message: string }> => {
+    // 1. Validate the 20-second token
+    const validation = validateAttendanceToken(tokenOrUrl);
+    if (!validation.valid || !validation.campaignId) {
+      return {
+        success: false,
+        message: validation.reason || 'Mã QR không hợp lệ hoặc đã hết hạn (mã tự động đổi mỗi 20 giây để chống điểm danh hộ).'
+      };
+    }
+
+    const camp = campaigns.find(c => c.id === validation.campaignId);
+    if (!camp) {
+      return {
+        success: false,
+        message: 'Không tìm thấy thông tin hoạt động tương ứng với mã QR này.'
+      };
+    }
+
+    // 2. Identify the active student
+    if (!currentUser || role !== 'student') {
+      return {
+        success: false,
+        message: 'Vui lòng đăng nhập tài khoản Đội viên để hệ thống ghi nhận điểm danh!'
+      };
+    }
+
+    const student = students.find(s => s.id === currentUser.id || s.studentId === (currentUser as Student).studentId) || (currentUser as Student);
+
+    const nowFormatted = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' + new Date().toLocaleDateString('vi-VN');
+
+    // 3. Find registration
+    const reg = registrations.find(r => r.campaignId === camp.id && r.studentId === student.id);
+
+    // Case A: Student has an existing registration
+    if (reg) {
+      if (reg.status === 'completed' && reg.attendanceStatus === 'present') {
+        return {
+          success: true,
+          message: `Bạn đã điểm danh thành công hoạt động "${camp.title}" trước đó rồi!`
+        };
+      }
+
+      if (reg.status === 'rejected') {
+        return {
+          success: false,
+          message: `Lượt đăng ký của bạn tại hoạt động "${camp.title}" không được duyệt tham gia.`
+        };
+      }
+
+      const defaultPerfScore = 10;
+      const scoreToAward = camp.scoreType === 'Ngày' ? camp.score : 0;
+      const hoursToAward = camp.scoreType !== 'Ngày' ? camp.score : 0;
+
+      try {
+        const batch = writeBatch(db);
+        batch.update(doc(db, 'registrations', reg.id), {
+          status: 'completed',
+          attendanceStatus: 'present',
+          performanceScore: defaultPerfScore,
+          attendedAt: nowFormatted,
+          checkinMethod: 'qr_20s'
+        });
+
+        const updatedCtxhAccumulated = (student.ctxhAccumulated || 0) + scoreToAward;
+        const updatedCtxhMissing = Math.max(0, (student.ctxhMissing || 0) - scoreToAward);
+        const updatedTotalPerf = (student.totalPerformanceScore || 0) + defaultPerfScore;
+        const updatedTotalScore = (student.totalScore || 0) + scoreToAward;
+        const updatedTotalHours = (student.totalHours || 0) + hoursToAward;
+
+        batch.update(doc(db, 'students', student.id), {
+          ctxhAccumulated: updatedCtxhAccumulated,
+          ctxhMissing: updatedCtxhMissing,
+          totalPerformanceScore: updatedTotalPerf,
+          totalScore: updatedTotalScore,
+          totalHours: updatedTotalHours
+        });
+
+        await batch.commit();
+
+        const unitText = camp.scoreType === 'Ngày' ? `${camp.score} ngày CTXH` : `${camp.score} giờ`;
+        return {
+          success: true,
+          message: `Điểm danh thành công hoạt động "${camp.title}"! Ghi nhận có mặt, tích lũy +${unitText} và +10 điểm đánh giá.`
+        };
+      } catch (err) {
+        console.error('Error completing QR attendance:', err);
+        handleFirestoreError(err, OperationType.WRITE, `registrations/${reg.id}`);
+        return {
+          success: false,
+          message: 'Lỗi ghi nhận điểm danh vào hệ thống. Vui lòng thử lại!'
+        };
+      }
+    }
+
+    // Case B: Student has NOT registered prior to event, but scanned live QR at the venue
+    if (camp.status === 'completed') {
+      return {
+        success: false,
+        message: `Hoạt động "${camp.title}" đã kết thúc và bạn chưa từng đăng ký tham gia.`
+      };
+    }
+
+    try {
+      const newRegId = `reg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      const defaultPerfScore = 10;
+      const scoreToAward = camp.scoreType === 'Ngày' ? camp.score : 0;
+      const hoursToAward = camp.scoreType !== 'Ngày' ? camp.score : 0;
+
+      const newRegistration: Registration = {
+        id: newRegId,
+        campaignId: camp.id,
+        campaignTitle: camp.title,
+        studentId: student.id,
+        studentName: student.name,
+        studentClass: student.className,
+        studentFaculty: student.faculty,
+        registeredAt: new Date().toISOString().slice(0, 16).replace('T', ' '),
+        status: 'completed',
+        attendanceStatus: 'present',
+        performanceScore: defaultPerfScore,
+        attendedAt: nowFormatted,
+        checkinMethod: 'qr_20s'
+      };
+
+      const batch = writeBatch(db);
+      batch.set(doc(db, 'registrations', newRegId), newRegistration);
+
+      const newSlots = (camp.slotsRegistered || 0) + 1;
+      const campUpdates: any = { slotsRegistered: newSlots };
+      if (newSlots >= camp.slotsTotal) {
+        campUpdates.status = 'paused';
+      }
+      batch.update(doc(db, 'campaigns', camp.id), campUpdates);
+
+      const updatedCtxhAccumulated = (student.ctxhAccumulated || 0) + scoreToAward;
+      const updatedCtxhMissing = Math.max(0, (student.ctxhMissing || 0) - scoreToAward);
+      const updatedTotalPerf = (student.totalPerformanceScore || 0) + defaultPerfScore;
+      const updatedTotalScore = (student.totalScore || 0) + scoreToAward;
+      const updatedTotalHours = (student.totalHours || 0) + hoursToAward;
+
+      batch.update(doc(db, 'students', student.id), {
+        ctxhAccumulated: updatedCtxhAccumulated,
+        ctxhMissing: updatedCtxhMissing,
+        totalPerformanceScore: updatedTotalPerf,
+        totalScore: updatedTotalScore,
+        totalHours: updatedTotalHours
+      });
+
+      await batch.commit();
+
+      const unitText = camp.scoreType === 'Ngày' ? `${camp.score} ngày CTXH` : `${camp.score} giờ`;
+      return {
+        success: true,
+        message: `Đã tự động đăng ký và điểm danh thành công tại hoạt động "${camp.title}"! Ghi nhận có mặt, +${unitText} và +10 điểm đánh giá.`
+      };
+    } catch (err) {
+      console.error('Error auto-registering and QR checkin:', err);
+      handleFirestoreError(err, OperationType.WRITE, `registrations_qr_auto`);
+      return {
+        success: false,
+        message: 'Lỗi ghi nhận điểm danh. Vui lòng thử lại!'
+      };
+    }
+  };
+
   // Reset state helper
   const handleResetDemoState = () => {
     setConfirmModal({
@@ -1160,6 +1592,17 @@ export default function App() {
           {/* User Session Info / Logout */}
           {currentUser && (
             <div className="flex items-center gap-3">
+              {role === 'admin' && (
+                <button
+                  onClick={handleSyncDatabase}
+                  className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-[#00529C] rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all border border-blue-200 cursor-pointer shadow-2xs"
+                  title="Đồng bộ cơ sở dữ liệu trên toàn website"
+                  id="btn-header-sync-db"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Đồng bộ CSDL</span>
+                </button>
+              )}
               <div className="hidden sm:block text-right">
                 <span className="text-xs font-bold text-gray-800 block">
                   {currentUser.name}
@@ -1707,6 +2150,7 @@ export default function App() {
                 activeStudent={activeStudent}
                 onRegisterCampaign={handleRegisterCampaign}
                 onCancelRegistration={handleCancelRegistration}
+                onCheckinQR={handleCheckinQR}
               />
             ) : (
               <AdminView
@@ -1726,6 +2170,7 @@ export default function App() {
                 onApproveStudent={handleApproveStudent}
                 onDownloadDocx={handleDownloadDocx}
                 onSyncAllStudentScores={handleSyncAllStudentScores}
+                onSyncDatabase={handleSyncDatabase}
               />
             )}
           </main>

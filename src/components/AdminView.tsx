@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Campaign, Student, Registration, Statistics } from '../types';
+import DynamicAttendanceQRModal from './DynamicAttendanceQRModal';
 import { 
   LayoutDashboard, 
   Users, 
@@ -34,7 +35,8 @@ import {
   ArrowUpDown,
   RefreshCw,
   ArrowLeft,
-  ChevronRight
+  ChevronRight,
+  Database
 } from 'lucide-react';
 
 interface AdminViewProps {
@@ -54,6 +56,13 @@ interface AdminViewProps {
   onApproveStudent: (studentId: string, approved: boolean) => void;
   onDownloadDocx: (student: Student) => void;
   onSyncAllStudentScores?: () => Promise<{ success: boolean; count: number }>;
+  onSyncDatabase?: () => Promise<{
+    success: boolean;
+    campaignsUpdated: number;
+    studentsUpdated: number;
+    regsUpdated: number;
+    message: string;
+  }>;
 }
 
 export default function AdminView({
@@ -72,7 +81,8 @@ export default function AdminView({
   onUpdateCampaignStatus,
   onApproveStudent,
   onDownloadDocx,
-  onSyncAllStudentScores
+  onSyncAllStudentScores,
+  onSyncDatabase
 }: AdminViewProps) {
   const [activeMenu, setActiveMenu] = useState<'dashboard' | 'students' | 'campaigns' | 'reports'>('dashboard');
   const [selectedStudentDetail, setSelectedStudentDetail] = useState<Student | null>(null);
@@ -83,9 +93,12 @@ export default function AdminView({
   const [viewingCampRegsId, setViewingCampRegsId] = useState<string | null>(null);
   const [campRegsSearch, setCampRegsSearch] = useState('');
   
-  // QR code modal state
+  // QR code modal state (Registration QR)
   const [viewingQrCampId, setViewingQrCampId] = useState<string | null>(null);
   const [qrCopied, setQrCopied] = useState(false);
+
+  // Dynamic 20s QR Attendance modal state
+  const [viewingAttendanceQrCampId, setViewingAttendanceQrCampId] = useState<string | null>(null);
   
   // Search and filter states
   const [studentSearch, setStudentSearch] = useState('');
@@ -1008,13 +1021,23 @@ export default function AdminView({
                       </button>
                     )}
 
+                    {/* Nút điểm danh bằng mã QR (20s) */}
+                    <button
+                      onClick={() => setViewingAttendanceQrCampId(camp.id)}
+                      className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer shadow-2xs ml-auto"
+                      title="Điểm danh tham gia hoạt động bằng mã QR (thay đổi mỗi 20 giây)"
+                    >
+                      <QrCode className="w-3 h-3 text-amber-600" />
+                      Điểm danh QR (20s)
+                    </button>
+
                     {/* Nút tạo mã QR đăng ký */}
                     <button
                       onClick={() => {
                         setViewingQrCampId(camp.id);
                         setQrCopied(false);
                       }}
-                      className="px-2.5 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all ml-auto cursor-pointer"
+                      className="px-2.5 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-lg text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer"
                       title="Tạo mã QR Đăng ký"
                     >
                       <QrCode className="w-3 h-3" />
@@ -1215,19 +1238,29 @@ export default function AdminView({
                               </div>
                             </div>
 
-                            {/* View button */}
-                            <button
-                              onClick={() => {
-                                setSelectedEvalCampaignId(camp.id);
-                                setEvalMemberSearch('');
-                                setEvalMemberStatusFilter('all');
-                              }}
-                              className="w-full mt-4 py-2.5 px-4 bg-gradient-to-r from-[#00529C] to-[#00AEEF] hover:from-[#00417C] hover:to-[#0098D4] text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-xs hover:shadow transition-all cursor-pointer"
-                            >
-                              <Users className="w-4 h-4" />
-                              <span>Xem danh sách đăng ký ({totalRegs})</span>
-                              <ChevronRight className="w-4 h-4" />
-                            </button>
+                            {/* Action buttons */}
+                            <div className="flex items-center gap-2 mt-4">
+                              <button
+                                onClick={() => {
+                                  setSelectedEvalCampaignId(camp.id);
+                                  setEvalMemberSearch('');
+                                  setEvalMemberStatusFilter('all');
+                                }}
+                                className="flex-1 py-2.5 px-3 bg-gradient-to-r from-[#00529C] to-[#00AEEF] hover:from-[#00417C] hover:to-[#0098D4] text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-xs hover:shadow transition-all cursor-pointer"
+                              >
+                                <Users className="w-4 h-4" />
+                                <span>Chi tiết ({totalRegs})</span>
+                                <ChevronRight className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => setViewingAttendanceQrCampId(camp.id)}
+                                className="px-3 py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-2xs shrink-0"
+                                title="Điểm danh tham gia hoạt động bằng mã QR (thay đổi sau 20s)"
+                              >
+                                <QrCode className="w-4 h-4 text-amber-700" />
+                                <span>QR 20s</span>
+                              </button>
+                            </div>
                           </div>
                         );
                       })}
@@ -1337,6 +1370,15 @@ export default function AdminView({
                             ))}
                           </select>
                         </div>
+
+                        <button
+                          onClick={() => setViewingAttendanceQrCampId(selectedCamp.id)}
+                          className="px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
+                          title="Trình chiếu mã QR điểm danh tự động đổi sau 20 giây"
+                        >
+                          <QrCode className="w-4 h-4" />
+                          <span>Điểm danh QR (20s)</span>
+                        </button>
 
                         <button
                           onClick={() => handleExportCampaignParticipants(selectedCamp.id)}
@@ -1858,6 +1900,14 @@ export default function AdminView({
                   </div>
                   <div className="flex items-center gap-2">
                     <button
+                      onClick={() => setViewingAttendanceQrCampId(viewingCampRegsId)}
+                      className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-[11px] font-bold flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
+                      title="Trình chiếu mã QR điểm danh tự động đổi sau 20 giây"
+                    >
+                      <QrCode className="w-3.5 h-3.5" />
+                      Điểm danh QR (20s)
+                    </button>
+                    <button
                       onClick={() => handleExportCampaignParticipants(viewingCampRegsId)}
                       className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-[11px] font-bold flex items-center gap-1.5 transition-all cursor-pointer"
                       title="Xuất file danh sách đăng ký (.csv)"
@@ -2142,6 +2192,23 @@ export default function AdminView({
           );
         })()
       )}
+
+      {/* MODAL: ĐIỂM DANH THAM GIA HOẠT ĐỘNG BẰNG MÃ QR (ĐỔI SAU 20 GIÂY) */}
+      {viewingAttendanceQrCampId && (() => {
+        const camp = campaigns.find(c => c.id === viewingAttendanceQrCampId);
+        if (!camp) return null;
+        return (
+          <DynamicAttendanceQRModal
+            campaign={camp}
+            registrations={registrations}
+            students={students}
+            onClose={() => setViewingAttendanceQrCampId(null)}
+            onManualCheckin={async (regId) => {
+              onCompleteCampaignRegistration(regId, 'present', 10);
+            }}
+          />
+        );
+      })()}
 
       {/* MODAL: CHI TIẾT THÔNG TIN ĐỘI VIÊN */}
       {selectedStudentDetail && (
