@@ -79,24 +79,28 @@ export default function QRScannerModal({
     setIsProcessing(true);
     setErrorMessage(null);
 
-    // Stop camera once scanned
-    if (html5QrCodeRef.current && html5QrCodeRef.current.isScanning) {
-      try {
-        await html5QrCodeRef.current.stop();
-      } catch {}
-    }
-
     try {
       const result = await onScanSuccess(code);
       if (result.success) {
+        // Stop camera once scan succeeds
+        if (html5QrCodeRef.current && html5QrCodeRef.current.isScanning) {
+          try {
+            await html5QrCodeRef.current.stop();
+          } catch {}
+        }
         setScanResult(result.message);
       } else {
         setErrorMessage(result.message || 'Mã QR không hợp lệ!');
+        // Allow scanning again after 2.5s for rotating QR code
+        setTimeout(() => {
+          setIsProcessing(false);
+        }, 2500);
       }
     } catch (err: any) {
       setErrorMessage(err?.message || 'Có lỗi xảy ra khi xử lý điểm danh!');
-    } finally {
-      setIsProcessing(false);
+      setTimeout(() => {
+        setIsProcessing(false);
+      }, 2500);
     }
   };
 
@@ -213,9 +217,20 @@ export default function QRScannerModal({
             <>
               {/* Error Box */}
               {errorMessage && (
-                <div className="bg-red-50 text-red-700 p-3 rounded-xl border border-red-200 flex items-start gap-2 animate-fade-in">
-                  <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
-                  <span className="leading-snug">{errorMessage}</span>
+                <div className="bg-red-50 text-red-700 p-3 rounded-xl border border-red-200 flex items-start justify-between gap-2 animate-fade-in">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                    <span className="leading-snug">{errorMessage}</span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setErrorMessage(null);
+                      setIsProcessing(false);
+                    }}
+                    className="text-[11px] font-bold text-red-700 underline hover:text-red-900 shrink-0 cursor-pointer ml-1"
+                  >
+                    Thử lại
+                  </button>
                 </div>
               )}
 
